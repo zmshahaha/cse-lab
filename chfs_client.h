@@ -6,6 +6,7 @@
 #include "extent_client.h"
 #include <vector>
 
+#define MAX_FILE_NAME 100
 
 class chfs_client {
   extent_client *ec;
@@ -38,7 +39,6 @@ class chfs_client {
   int append_parent_d(inum,const char *,inum);
 
  public:
-  chfs_client();
   chfs_client(std::string);
   chfs_client(std::string, std::string);
 
@@ -50,7 +50,7 @@ class chfs_client {
   int getdir(inum, dirinfo &);
 
   int setattr(inum, size_t);
-  int lookup(inum, const char *, bool &, inum &);
+  int lookup(inum, const char *, inum &);
   int create(inum, const char *, mode_t, inum &);
   int readdir(inum, std::list<dirent> &);
   int write(inum, size_t, off_t, const char *, size_t &);

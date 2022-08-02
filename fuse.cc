@@ -498,24 +498,20 @@ main(int argc, char *argv[])
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
-#if 0
-    if(argc != 4){
-        fprintf(stderr, "Usage: chfs_client <mountpoint> <port-extent-server> <port-lock-server>\n");
+    if(argc != 3){
+        fprintf(stderr, "Usage: chfs_client <mountpoint> <port-extent-server>\n");
         exit(1);
     }
-#endif
-    if(argc != 2){
-        fprintf(stderr, "Usage: chfs_client <mountpoint>\n");
-        exit(1);
-    }
+
     mountpoint = argv[1];
 
     srandom(getpid());
 
     myid = random();
 
+    chfs = new chfs_client(argv[2]);
     // chfs = new chfs_client(argv[2], argv[3]);
-    chfs = new chfs_client();
+    //chfs = new chfs_client();
 
     fuseserver_oper.getattr    = fuseserver_getattr;
     fuseserver_oper.statfs     = fuseserver_statfs;

@@ -24,7 +24,7 @@ demo_protocol::status
 demo_server::stat(int clt, demo_protocol::demoVar var, int &r)
 {
   demo_protocol::status ret = demo_protocol::OK;
-  printf("stat request from clt %d\n", clt);
+  printf("stat request from clt %d %x %d\n", clt,var,r);
   r = 0;
   return ret;
 }
