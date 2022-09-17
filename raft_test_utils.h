@@ -217,7 +217,7 @@ int raft_group<state_machine, command>::check_exact_one_leader() {
             bool is_leader = node->is_leader(term);
             if (is_leader) {
                 ASSERT(term > 0, "term " << term << " should not have a leader."); 
-                ASSERT(term_leaders.find(term) == term_leaders.end(), "term " << term << " has more than one leader.");
+                ASSERT(term_leaders.find(term) == term_leaders.end(), "term " << term << " has more than one leader."<<j<<" "<<term_leaders.find(term)->second);
                 term_leaders[term] = j;
             }
         }

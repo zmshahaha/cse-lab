@@ -30,7 +30,7 @@ friend class thread_pool;
         std::chrono::duration_cast<std::chrono::milliseconds>(\
             std::chrono::system_clock::now().time_since_epoch()\
         ).count();\
-        printf("[%ld][%s:%d][node %d term %d] " fmt "\n", now, __FILE__, __LINE__, my_id, current_term, ##args); \
+        printf("[%ld][%s:%d][node %d term %d][role %d] " fmt "\n", now, __FILE__, __LINE__, my_id, current_term,role, ##args); \
     } while(0);
 
 public:
@@ -90,6 +90,7 @@ private:
     std::thread* background_apply;
 
     // Your code here:
+    int voteFor=-1;
     int heartbeat_timeout = 150;
     int follower_election_timeout;
     int candidate_election_timeout=1000;
@@ -251,6 +252,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
     //RAFT_LOG("I accept %d.I am a follower now.", args.candidateId);
     role = raft_role::follower;
     current_term = args.term;
+    voteFor = args.candidateId;
     reply.vateGranted = true;
     return 0;
 }
@@ -260,36 +262,37 @@ template<typename state_machine, typename command>
 void raft<state_machine, command>::handle_request_vote_reply(int target, const request_vote_args& arg, const request_vote_reply& reply) {
     // Your code here:
     //RAFT_LOG("handle_request_vote_reply");
-    if(arg.term > current_term){
+    if(reply.currentTerm > current_term){
         std::lock_guard<std::mutex> grd(mtx);
         role = follower;
-        current_term = arg.term;
+        current_term = reply.currentTerm;
+        return;
     }
 
-    if(reply.vateGranted && role == raft_role::candidate){
+    // bug fixed: send heartbeat needs time, term can change and cause becoming leader in wrong term
+    std::lock_guard<std::mutex> grd(mtx);
+    if(reply.vateGranted && role == candidate && current_term == arg.term){
         vote_count ++;
         if(vote_count >= (int)(rpc_clients.size()/2+1)){
-            //RAFT_LOG("I am leader now.");
-            send_heartbeat();
-            std::lock_guard<std::mutex> grd(mtx);
             role = leader;
+            send_heartbeat();
+            //RAFT_LOG("I am leader now.");
         }
     }
-    return;
 }
 
 
 template<typename state_machine, typename command>
 int raft<state_machine, command>::append_entries(append_entries_args<command> arg, append_entries_reply& reply) {
     // Your code here:
-    //RAFT_LOG("append_entry");
+    //RAFT_LOG("append entry from %d",arg.leaderId);
     if(arg.term < current_term)
     {
         reply.success = false;
         return 0;
     }
 
-    if(arg.term > current_term)
+    if(arg.term >= current_term)
     {
         std::lock_guard<std::mutex> grd(mtx);
         current_term = arg.term;
@@ -381,9 +384,11 @@ void raft<state_machine, command>::run_background_election() {
         if((role == candidate && timeval > candidate_election_timeout)|| 
             (role == follower && timeval > follower_election_timeout))
         {
+            //RAFT_LOG("elect leader id %d term %d",my_id,current_term);
             std::unique_lock<std::mutex> grd(mtx);
             role = candidate;
             current_term++;
+            last_received_RPC_time=std::chrono::steady_clock::now();
             vote_count = 1;
             grd.unlock();
             request_vote_args arg;
@@ -450,8 +455,10 @@ void raft<state_machine, command>::run_background_ping() {
     while (true) {
         if (is_stopped()) return;
         // Your code here:
-        if(role != leader)continue;
-        send_heartbeat();
+        if(role == leader)
+        {
+            send_heartbeat();    
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(heartbeat_timeout)); // Change the timeout here!
     }    
     return;
