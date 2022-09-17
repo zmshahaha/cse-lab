@@ -90,8 +90,11 @@ private:
     std::thread* background_apply;
 
     // Your code here:
-
-
+    int heartbeat_timeout = 150;
+    int follower_election_timeout;
+    int candidate_election_timeout=1000;
+    int vote_count = 0;
+    std::chrono::time_point<std::chrono::steady_clock> last_received_RPC_time = std::chrono::steady_clock::now();
 private:
     // RPC handlers
     int request_vote(request_vote_args arg, request_vote_reply& reply);
@@ -110,7 +113,7 @@ private:
     void send_install_snapshot(int target, install_snapshot_args arg);
     void handle_install_snapshot_reply(int target, const install_snapshot_args& arg, const install_snapshot_reply& reply);
 
-
+    void send_heartbeat();
 private:
     bool is_stopped();
     int num_nodes() {return rpc_clients.size();}
@@ -150,6 +153,8 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
 
     // Your code here: 
     // Do the initialization
+    srand(rand());
+    follower_election_timeout = rand() % 200 + 300;
 }
 
 template<typename state_machine, typename command>
@@ -199,8 +204,8 @@ bool raft<state_machine, command>::is_leader(int &term) {
 template<typename state_machine, typename command>
 void raft<state_machine, command>::start() {
     // Your code here:
-    
-    RAFT_LOG("start");
+    //recover log??
+    //RAFT_LOG("start");
     this->background_election = new std::thread(&raft::run_background_election, this);
     this->background_ping = new std::thread(&raft::run_background_ping, this);
     this->background_commit = new std::thread(&raft::run_background_commit, this);
@@ -210,7 +215,7 @@ void raft<state_machine, command>::start() {
 template<typename state_machine, typename command>
 bool raft<state_machine, command>::new_command(command cmd, int &term, int &index) {
     // Your code here:
-
+    //RAFT_LOG("new command");
     term = current_term;
     return true;
 }
@@ -218,6 +223,7 @@ bool raft<state_machine, command>::new_command(command cmd, int &term, int &inde
 template<typename state_machine, typename command>
 bool raft<state_machine, command>::save_snapshot() {
     // Your code here:
+    //RAFT_LOG("save snapshot");
     return true;
 }
 
@@ -231,6 +237,21 @@ bool raft<state_machine, command>::save_snapshot() {
 template<typename state_machine, typename command>
 int raft<state_machine, command>::request_vote(request_vote_args args, request_vote_reply& reply) {
     // Your code here:
+    //RAFT_LOG("receive request vote");
+    std::lock_guard<std::mutex> grd(mtx);
+
+    reply.vateGranted = false;
+    reply.currentTerm = current_term;
+
+    if(args.term <= current_term){
+        //RAFT_LOG("I refuse %d. It's term is %d.", args.candidateId, args.term);
+        return 0;
+    }
+    
+    //RAFT_LOG("I accept %d.I am a follower now.", args.candidateId);
+    role = raft_role::follower;
+    current_term = args.term;
+    reply.vateGranted = true;
     return 0;
 }
 
@@ -238,6 +259,22 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
 template<typename state_machine, typename command>
 void raft<state_machine, command>::handle_request_vote_reply(int target, const request_vote_args& arg, const request_vote_reply& reply) {
     // Your code here:
+    //RAFT_LOG("handle_request_vote_reply");
+    if(arg.term > current_term){
+        std::lock_guard<std::mutex> grd(mtx);
+        role = follower;
+        current_term = arg.term;
+    }
+
+    if(reply.vateGranted && role == raft_role::candidate){
+        vote_count ++;
+        if(vote_count >= (int)(rpc_clients.size()/2+1)){
+            //RAFT_LOG("I am leader now.");
+            send_heartbeat();
+            std::lock_guard<std::mutex> grd(mtx);
+            role = leader;
+        }
+    }
     return;
 }
 
@@ -245,12 +282,28 @@ void raft<state_machine, command>::handle_request_vote_reply(int target, const r
 template<typename state_machine, typename command>
 int raft<state_machine, command>::append_entries(append_entries_args<command> arg, append_entries_reply& reply) {
     // Your code here:
+    //RAFT_LOG("append_entry");
+    if(arg.term < current_term)
+    {
+        reply.success = false;
+        return 0;
+    }
+
+    if(arg.term > current_term)
+    {
+        std::lock_guard<std::mutex> grd(mtx);
+        current_term = arg.term;
+        role = follower;
+    }
+    
+    last_received_RPC_time = std::chrono::steady_clock::now();
     return 0;
 }
 
 template<typename state_machine, typename command>
 void raft<state_machine, command>::handle_append_entries_reply(int target, const append_entries_args<command>& arg, const append_entries_reply& reply) {
     // Your code here:
+    
     return;
 }
 
@@ -270,6 +323,7 @@ void raft<state_machine, command>::handle_install_snapshot_reply(int target, con
 
 template<typename state_machine, typename command>
 void raft<state_machine, command>::send_request_vote(int target, request_vote_args arg) {
+    //RAFT_LOG("send request vote");
     request_vote_reply reply;
     if (rpc_clients[target]->call(raft_rpc_opcodes::op_request_vote, arg, reply) == 0) {
         handle_request_vote_reply(target, arg, reply);
@@ -280,6 +334,7 @@ void raft<state_machine, command>::send_request_vote(int target, request_vote_ar
 
 template<typename state_machine, typename command>
 void raft<state_machine, command>::send_append_entries(int target, append_entries_args<command> arg) {
+    //RAFT_LOG("send append entry");
     append_entries_reply reply;
     if (rpc_clients[target]->call(raft_rpc_opcodes::op_append_entries, arg, reply) == 0) {
         handle_append_entries_reply(target, arg, reply);
@@ -318,8 +373,30 @@ void raft<state_machine, command>::run_background_election() {
     
     while (true) {
         if (is_stopped()) return;
+        if (role == leader) continue;
         // Your code here:
+        auto current_time = std::chrono::steady_clock::now();
+        int timeval = std::chrono::duration_cast<std::chrono::milliseconds>(current_time-last_received_RPC_time).count();
 
+        if((role == candidate && timeval > candidate_election_timeout)|| 
+            (role == follower && timeval > follower_election_timeout))
+        {
+            std::unique_lock<std::mutex> grd(mtx);
+            role = candidate;
+            current_term++;
+            vote_count = 1;
+            grd.unlock();
+            request_vote_args arg;
+            arg.term = current_term;
+            arg.candidateId = my_id;
+            for(int i=0;i<(int)rpc_clients.size();i++)
+            {
+                if(i!=my_id)
+                {
+                    thread_pool->addObjJob(this, &raft::send_request_vote,(int)i,arg);
+                }
+            }
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }    
     
@@ -373,10 +450,9 @@ void raft<state_machine, command>::run_background_ping() {
     while (true) {
         if (is_stopped()) return;
         // Your code here:
-
-
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Change the timeout here!
+        if(role != leader)continue;
+        send_heartbeat();
+        std::this_thread::sleep_for(std::chrono::milliseconds(heartbeat_timeout)); // Change the timeout here!
     }    
     return;
 }
@@ -388,6 +464,19 @@ void raft<state_machine, command>::run_background_ping() {
 
 *******************************************************************/
 
-
+template<typename state_machine, typename command>
+void raft<state_machine, command>::send_heartbeat() 
+{
+    append_entries_args<command> arg;
+    arg.leaderId = my_id;
+    arg.term = current_term;
+    for(int i=0;i<(int)rpc_clients.size();i++)
+    {
+        if(i!=my_id)
+        {
+            thread_pool->addObjJob(this, &raft::send_append_entries,(int)i,arg);
+        }
+    }
+}
 
 #endif // raft_h
