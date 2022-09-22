@@ -225,6 +225,7 @@ int raft_group<state_machine, command>::check_exact_one_leader() {
             auto last_term = term_leaders.rbegin();
             return last_term->second; // return the leader index
         }
+        printf("sleep\n");
         // sleep a while, in case the election is not successful.
         mssleep(500 + (random() % 10) * 30);
     }
