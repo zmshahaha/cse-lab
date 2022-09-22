@@ -225,7 +225,7 @@ int raft_group<state_machine, command>::check_exact_one_leader() {
             auto last_term = term_leaders.rbegin();
             return last_term->second; // return the leader index
         }
-        printf("sleep\n");
+        //printf("sleep\n");
         // sleep a while, in case the election is not successful.
         mssleep(500 + (random() % 10) * 30);
     }
@@ -265,7 +265,7 @@ int raft_group<state_machine, command>::check_same_term() {
 
 template<typename state_machine, typename command>
 void raft_group<state_machine, command>::disable_node(int i) {
-    printf("disable node %d\n",i);
+    //printf("disable node %d\n",i);
     rpcs* server = servers[i];
     std::vector<rpcc*> &client = clients[i];
     server->set_reachable(false);
@@ -275,7 +275,7 @@ void raft_group<state_machine, command>::disable_node(int i) {
 
 template<typename state_machine, typename command>
 void raft_group<state_machine, command>::enable_node(int i) {
-    printf("enable node %d\n",i);
+    //printf("enable node %d\n",i);
     rpcs* server = servers[i];
     std::vector<rpcc*> &client = clients[i];
     server->set_reachable(true);

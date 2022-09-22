@@ -255,14 +255,14 @@ bool raft<state_machine, command>::save_snapshot() {
 template<typename state_machine, typename command>
 int raft<state_machine, command>::request_vote(request_vote_args args, request_vote_reply& reply) {
     // Your code here:
-     RAFT_LOG("receive request vote from %d %d %d %d",args.candidateId,args.term,args.lastLogIndex,args.lastLogTerm);
+    // RAFT_LOG("receive request vote from %d %d %d %d",args.candidateId,args.term,args.lastLogIndex,args.lastLogTerm);
     std::lock_guard<std::mutex> grd(mtx);
-    print_log();
+    //print_log();
     reply.vateGranted = false;
     reply.currentTerm = current_term;
 
     if(args.term < current_term){
-        RAFT_LOG("I refuse %d. It's term is %d.", args.candidateId, args.term);
+        //RAFT_LOG("I refuse %d. It's term is %d.", args.candidateId, args.term);
         return 0;
     }
     
@@ -279,10 +279,10 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
         if(log[last_log_index].term > args.lastLogTerm ||
          (log[last_log_index].term == args.lastLogTerm &&
           log[last_log_index].index > args.lastLogIndex)){
-            RAFT_LOG("I refuse %d. It's term is %d.", args.candidateId, args.term);
+            //RAFT_LOG("I refuse %d. It's term is %d.", args.candidateId, args.term);
             return 0;
         }
-        RAFT_LOG("I accept %d.I am a follower now.", args.candidateId);
+        //RAFT_LOG("I accept %d.I am a follower now.", args.candidateId);
         voteFor = args.candidateId;
         reply.vateGranted = true;
         // avoid unnecessary multiple candidate
@@ -296,8 +296,8 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
 template<typename state_machine, typename command>
 void raft<state_machine, command>::handle_request_vote_reply(int target, const request_vote_args& arg, const request_vote_reply& reply) {
     // Your code here:
-    RAFT_LOG("handle_request_vote_reply");
-    print_log();
+    //RAFT_LOG("handle_request_vote_reply");
+    //print_log();
     if(reply.currentTerm > current_term){
         std::lock_guard<std::mutex> grd(mtx);
         role = follower;
@@ -312,7 +312,7 @@ void raft<state_machine, command>::handle_request_vote_reply(int target, const r
         if(vote_count >= (int)(rpc_clients.size()/2+1)){
             role = leader;
             init_leader();
-            RAFT_LOG("I am leader now.");
+            //RAFT_LOG("I am leader now.");
         }
     }
 }
@@ -321,7 +321,7 @@ void raft<state_machine, command>::handle_request_vote_reply(int target, const r
 template<typename state_machine, typename command>
 int raft<state_machine, command>::append_entries(append_entries_args<command> arg, append_entries_reply& reply) {
     // Your code here:
-    RAFT_LOG("append entry from %d",arg.leaderId);
+    //RAFT_LOG("append entry from %d",arg.leaderId);
     std::lock_guard<std::mutex> grd(mtx);
 
     reply.term = current_term;
@@ -364,7 +364,7 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
 template<typename state_machine, typename command>
 void raft<state_machine, command>::handle_append_entries_reply(int target, const append_entries_args<command>& arg, const append_entries_reply& reply) {
     // Your code here:
-    RAFT_LOG("handle_append_entries_reply");
+    //RAFT_LOG("handle_append_entries_reply");
     std::lock_guard<std::mutex> grd(mtx);
     if(reply.term > current_term){
         current_term = reply.term;
@@ -496,7 +496,7 @@ void raft<state_machine, command>::run_background_commit() {
             arg.leaderId = my_id;
             arg.term = current_term;
             for(int i=0;i<(int)rpc_clients.size();i++){
-                if(i != my_id && log.size() > nextIndex[i]){
+                if(i != my_id && (int)log.size() > nextIndex[i]){
                     arg.prevLogIndex = nextIndex[i] - 1;
                     arg.prevLogTerm = log[arg.prevLogIndex].term;
                     arg.entries.resize(log.size() - arg.prevLogIndex - 1);
