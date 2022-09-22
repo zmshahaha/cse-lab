@@ -274,7 +274,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
     }
     
     // a candidate can send vote req multiple time because of network failure
-    if(voteFor == -1 || voteFor == args.candidateId)
+    if((voteFor == -1 || voteFor == args.candidateId) && role == follower)
     {
         int last_log_index = log.size() - 1;
         if(log[last_log_index].term > args.lastLogTerm ||
@@ -322,13 +322,16 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     // Your code here:
     //RAFT_LOG("append entry from %d",arg.leaderId);
     std::lock_guard<std::mutex> grd(mtx);
+
     reply.term = current_term;
     reply.success = false;
 
     if(arg.term < current_term){
         return 0;
     }
+
     last_received_RPC_time = std::chrono::steady_clock::now();
+    
     if(arg.term > current_term){
         current_term = arg.term;
         reply.term = current_term;
@@ -349,8 +352,11 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     if(arg.leaderCommit > commitIndex){
         commitIndex = min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size());
     }
+
     last_received_RPC_time = std::chrono::steady_clock::now();
-    print_log();
+
+    //print_log();
+    
     return 0;
 }
 
@@ -373,7 +379,6 @@ void raft<state_machine, command>::handle_append_entries_reply(int target, const
     else{
         nextIndex[target]--;
     }
-    
 }
 
 
@@ -438,8 +443,6 @@ void raft<state_machine, command>::run_background_election() {
     //        For example:
     //        if (current_time - last_received_RPC_time > timeout) start_election();
     //        Actually, the timeout should be different between the follower (e.g. 300-500ms) and the candidate (e.g. 1s).
-
-    
     while (true) {
         if (is_stopped()) return;
         if (role == leader) continue;
@@ -450,7 +453,7 @@ void raft<state_machine, command>::run_background_election() {
         if((role == candidate && timeval > candidate_election_timeout)|| 
             (role == follower && timeval > follower_election_timeout))
         {
-            RAFT_LOG("elect leader id %d term %d",my_id,current_term);
+            //RAFT_LOG("elect leader id %d term %d",my_id,current_term);
             std::unique_lock<std::mutex> grd(mtx);
             role = candidate;
             current_term++;
@@ -472,8 +475,6 @@ void raft<state_machine, command>::run_background_election() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }    
-    
-
     return;
 }
 
@@ -505,7 +506,6 @@ void raft<state_machine, command>::run_background_commit() {
             change_leader_commit();
             print_log();
         }
-        
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }    
     
@@ -527,7 +527,6 @@ void raft<state_machine, command>::run_background_apply() {
                 state->apply_log(log[lastApplied+1].cmd);
             }
         }
-        
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }    
     return;
@@ -615,6 +614,6 @@ void raft<state_machine, command>::print_log(){
     for(int i = 0 ; i < (int)log.size() ; i++){
         sprintf(a+9+16+i*9,"%2d-%2d-%2d ",i,log[i].index,log[i].term);
     }
-    RAFT_LOG("%s",a);
+    //RAFT_LOG("%s",a);
 }
 #endif // raft_h
