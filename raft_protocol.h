@@ -46,21 +46,21 @@ class log_entry {
 public:
     // Your code here
     command cmd;
-    int term_number;
+    int term;
     int index;
 };
 
 template<typename command>
 marshall& operator<<(marshall &m, const log_entry<command>& entry) {
     // Your code here
-    m<<entry.cmd<<entry.term_number<<entry.index;
+    m<<entry.cmd<<entry.term<<entry.index;
     return m;
 }
 
 template<typename command>
 unmarshall& operator>>(unmarshall &u, log_entry<command>& entry) {
     // Your code here
-    u>>entry.cmd>>entry.term_number>>entry.index;
+    u>>entry.cmd>>entry.term>>entry.index;
     return u;
 }
 
