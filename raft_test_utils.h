@@ -264,6 +264,7 @@ int raft_group<state_machine, command>::check_same_term() {
 
 template<typename state_machine, typename command>
 void raft_group<state_machine, command>::disable_node(int i) {
+    printf("disable node %d\n",i);
     rpcs* server = servers[i];
     std::vector<rpcc*> &client = clients[i];
     server->set_reachable(false);
@@ -273,6 +274,7 @@ void raft_group<state_machine, command>::disable_node(int i) {
 
 template<typename state_machine, typename command>
 void raft_group<state_machine, command>::enable_node(int i) {
+    printf("enable node %d\n",i);
     rpcs* server = servers[i];
     std::vector<rpcc*> &client = clients[i];
     server->set_reachable(true);

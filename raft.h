@@ -158,8 +158,7 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
 
     // Your code here: 
     // Do the initialization
-    srand(rand());
-    follower_election_timeout = rand() % 400 + 300;
+    follower_election_timeout = my_id * 200 / (rpc_clients.size()-1) + 300;
     matchIndex.resize(clients.size());
     nextIndex.resize(clients.size());
     log.resize(1);
@@ -256,9 +255,9 @@ bool raft<state_machine, command>::save_snapshot() {
 template<typename state_machine, typename command>
 int raft<state_machine, command>::request_vote(request_vote_args args, request_vote_reply& reply) {
     // Your code here:
-    //RAFT_LOG("receive request vote");
+    // RAFT_LOG("receive request vote from %d %d %d %d",args.candidateId,args.term,args.lastLogIndex,args.lastLogTerm);
     std::lock_guard<std::mutex> grd(mtx);
-    
+    //print_log();
     reply.vateGranted = false;
     reply.currentTerm = current_term;
 
@@ -282,7 +281,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
           log[last_log_index].index > args.lastLogIndex)){
             return 0;
         }
-        //RAFT_LOG("I accept %d.I am a follower now.", args.candidateId);
+        // RAFT_LOG("I accept %d.I am a follower now.", args.candidateId);
         voteFor = args.candidateId;
         reply.vateGranted = true;
         // avoid unnecessary multiple candidate
@@ -297,6 +296,7 @@ template<typename state_machine, typename command>
 void raft<state_machine, command>::handle_request_vote_reply(int target, const request_vote_args& arg, const request_vote_reply& reply) {
     // Your code here:
     //RAFT_LOG("handle_request_vote_reply");
+    //print_log();
     if(reply.currentTerm > current_term){
         std::lock_guard<std::mutex> grd(mtx);
         role = follower;
@@ -504,7 +504,7 @@ void raft<state_machine, command>::run_background_commit() {
                 }                
             }
             change_leader_commit();
-            print_log();
+            //print_log();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }    
@@ -614,6 +614,6 @@ void raft<state_machine, command>::print_log(){
     for(int i = 0 ; i < (int)log.size() ; i++){
         sprintf(a+9+16+i*9,"%2d-%2d-%2d ",i,log[i].index,log[i].term);
     }
-    //RAFT_LOG("%s",a);
+    RAFT_LOG("%s",a);
 }
 #endif // raft_h
