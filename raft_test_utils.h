@@ -334,9 +334,9 @@ int raft_group<state_machine, command>::append_new_command(int value, int expect
     list_command cmd(value);
     auto start = std::chrono::system_clock::now();
     int leader_idx = 0;
-    std::cout<<"begin"<<std::endl;
+    //std::cout<<"begin"<<std::endl;
     while (std::chrono::system_clock::now() < start + std::chrono::seconds(10)) {
-        std::cout<<"begin loop"<<std::endl;
+        //std::cout<<"begin loop"<<std::endl;
         int log_idx = -1;
         for (size_t i = 0; i < nodes.size(); i++) {
             leader_idx = (leader_idx + 1) % nodes.size();
@@ -350,19 +350,19 @@ int raft_group<state_machine, command>::append_new_command(int value, int expect
                 break;
             }
         }
-        std::cout <<"leader:"<<leader_idx<<" log_idx:"<<log_idx<<std::endl;
+        //std::cout <<"leader:"<<leader_idx<<" log_idx:"<<log_idx<<std::endl;
         if (log_idx != -1) {
-            std::cout <<"log_idx: "<<log_idx<<std::endl;
+            //std::cout <<"log_idx: "<<log_idx<<std::endl;
             auto check_start = std::chrono::system_clock::now();
             while (std::chrono::system_clock::now() < check_start + std::chrono::seconds(2)) {
                 int committed_server = num_committed(log_idx);
-                std::cout<<"nun commited: " << committed_server << std::endl;
+                //std::cout<<"nun commited: " << committed_server << std::endl;
                 if (committed_server >= expected_servers) {
                     // The log is committed!
                     int commited_value = get_committed_value(log_idx);
                     if (commited_value == value)
                         return log_idx; // and the log is what we want!
-                    std::cout<<"expected:"<<value<<" but:"<<commited_value<<std::endl;
+                    //std::cout<<"expected:"<<value<<" but:"<<commited_value<<std::endl;
                 }
                 mssleep(20);
             }

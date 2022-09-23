@@ -234,29 +234,29 @@ TEST_CASE(part2, rejoin, "Rejoin of partitioned leader")
     
     group->append_new_command(101, num_nodes);
     int leader1 = group->check_exact_one_leader();
-    std::cout<<"leader network failure"<<std::endl;
+    //std::cout<<"leader network failure"<<std::endl;
     // leader network failure
     group->disable_node(leader1);
-    std::cout<<"make old leader try to agree on some entries"<<std::endl;
+    //std::cout<<"make old leader try to agree on some entries"<<std::endl;
     // make old leader try to agree on some entries
     int temp_term, temp_index;
     group->nodes[leader1]->new_command(list_command(102), temp_term, temp_index);
     group->nodes[leader1]->new_command(list_command(103), temp_term, temp_index);
     group->nodes[leader1]->new_command(list_command(104), temp_term, temp_index);
-    std::cout<<"new leader commits, also for index=2"<<std::endl;
+    //std::cout<<"new leader commits, also for index=2"<<std::endl;
     // new leader commits, also for index=2
     int leader2 = group->check_exact_one_leader();
     group->append_new_command(103, 2);
-    std::cout<<"new leader network failure"<<std::endl;
+    //std::cout<<"new leader network failure"<<std::endl;
     // new leader network failure
     group->disable_node(leader2);
-    std::cout<<"old leader connected again"<<std::endl;
+    //std::cout<<"old leader connected again"<<std::endl;
 	// old leader connected again
     group->enable_node(leader1);
 
     group->append_new_command(104, 2);
 
-    std::cout<<"all together now"<<std::endl;
+    //std::cout<<"all together now"<<std::endl;
 	// all together now
 	group->enable_node(leader2);
 

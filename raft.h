@@ -225,7 +225,7 @@ void raft<state_machine, command>::start() {
 template<typename state_machine, typename command>
 bool raft<state_machine, command>::new_command(command cmd, int &term, int &index) {
     // Your code here:
-    RAFT_LOG("new command");
+    //RAFT_LOG("new command");
     std::lock_guard<std::mutex> guard(mtx);
     
     if(role != raft_role::leader){
@@ -310,7 +310,6 @@ void raft<state_machine, command>::handle_request_vote_reply(int target, const r
     if(reply.vateGranted && role == candidate && current_term == arg.term){
         vote_count ++;
         if(vote_count >= (int)(rpc_clients.size()/2+1)){
-            role = leader;
             init_leader();
             //RAFT_LOG("I am leader now.");
         }
@@ -356,7 +355,7 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
 
     last_received_RPC_time = std::chrono::steady_clock::now();
 
-    print_log();
+    //print_log();
     
     return 0;
 }
@@ -505,7 +504,7 @@ void raft<state_machine, command>::run_background_commit() {
                 }                
             }
             change_leader_commit();
-            print_log();
+            //print_log();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }    
@@ -602,6 +601,7 @@ void raft<state_machine, command>::change_leader_commit()
 
 template<typename state_machine, typename command>
 void raft<state_machine, command>::init_leader(){
+    role = leader;
     std::fill(nextIndex.begin(),nextIndex.end(),log.size());
     std::fill(matchIndex.begin(),matchIndex.end(),0);
     send_heartbeat();
