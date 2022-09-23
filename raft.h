@@ -118,6 +118,7 @@ private:
     void send_heartbeat();
     void change_leader_commit();
     void init_leader();
+    void change_current_term(int term);
     void print_log(); //just for debugging
 private:
     bool is_stopped();
@@ -224,7 +225,7 @@ void raft<state_machine, command>::start() {
 template<typename state_machine, typename command>
 bool raft<state_machine, command>::new_command(command cmd, int &term, int &index) {
     // Your code here:
-    //RAFT_LOG("new command");
+    RAFT_LOG("new command");
     std::lock_guard<std::mutex> guard(mtx);
     
     if(role != raft_role::leader){
@@ -268,8 +269,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
     
     if(args.term > current_term){
         role = raft_role::follower;
-        voteFor = -1;
-        current_term = args.term;
+        change_current_term(args.term);
     }
     
     // a candidate can send vote req multiple time because of network failure
@@ -301,7 +301,7 @@ void raft<state_machine, command>::handle_request_vote_reply(int target, const r
     if(reply.currentTerm > current_term){
         std::lock_guard<std::mutex> grd(mtx);
         role = follower;
-        current_term = reply.currentTerm;
+        change_current_term(reply.currentTerm);
         return;
     }
 
@@ -334,7 +334,7 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     last_received_RPC_time = std::chrono::steady_clock::now();
     
     if(arg.term > current_term){
-        current_term = arg.term;
+        change_current_term(arg.term);
         reply.term = current_term;
     }
     
@@ -356,7 +356,7 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
 
     last_received_RPC_time = std::chrono::steady_clock::now();
 
-    //print_log();
+    print_log();
     
     return 0;
 }
@@ -367,7 +367,7 @@ void raft<state_machine, command>::handle_append_entries_reply(int target, const
     //RAFT_LOG("handle_append_entries_reply");
     std::lock_guard<std::mutex> grd(mtx);
     if(reply.term > current_term){
-        current_term = reply.term;
+        change_current_term(reply.term);
         role = follower;
         last_received_RPC_time = std::chrono::steady_clock::now();
         return;
@@ -457,7 +457,7 @@ void raft<state_machine, command>::run_background_election() {
             //RAFT_LOG("elect leader id %d term %d",my_id,current_term);
             std::unique_lock<std::mutex> grd(mtx);
             role = candidate;
-            current_term++;
+            change_current_term(current_term+1);
             last_received_RPC_time=std::chrono::steady_clock::now();
             vote_count = 1;
             request_vote_args arg;
@@ -505,7 +505,7 @@ void raft<state_machine, command>::run_background_commit() {
                 }                
             }
             change_leader_commit();
-            //print_log();
+            print_log();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }    
@@ -608,6 +608,12 @@ void raft<state_machine, command>::init_leader(){
 }
 
 template<typename state_machine, typename command>
+void raft<state_machine, command>::change_current_term(int term){
+    current_term = term;
+    voteFor = -1;
+}
+
+template<typename state_machine, typename command>
 void raft<state_machine, command>::print_log(){
     char a[3000];
     sprintf(a,"size:%3d ",(int)log.size());
@@ -617,4 +623,6 @@ void raft<state_machine, command>::print_log(){
     }
     RAFT_LOG("%s",a);
 }
+
+
 #endif // raft_h
