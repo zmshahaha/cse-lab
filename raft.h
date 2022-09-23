@@ -347,7 +347,7 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     }
     
     reply.success = true;
-    log.resize(max(log.size(),arg.prevLogIndex+arg.entries.size() + 1));
+    log.resize(arg.prevLogIndex+arg.entries.size() + 1);
     std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1);
 
     if(arg.leaderCommit > commitIndex){
