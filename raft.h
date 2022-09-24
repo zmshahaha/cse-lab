@@ -14,6 +14,7 @@
 #include "raft_storage.h"
 #include "raft_protocol.h"
 #include "raft_state_machine.h"
+#include "backward.hpp"
 #define min(x, y) ((x) < (y) ? (x) : (y))
 #define max(x, y) ((x) > (y) ? (x) : (y))
 template<typename state_machine, typename command>
@@ -163,8 +164,8 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
     follower_election_timeout = my_id * 200 / (nodes-1) + 300;
     matchIndex.resize(nodes);
     nextIndex.resize(nodes);
-    storage->read_data(voteFor,current_term,log);
-    
+    //storage->read_data(voteFor,current_term,log);
+    {voteFor = -1;current_term = 0; log.resize(1);log[0].term = 0;log[0].index = 0;}
     //RAFT_LOG("log size:%d index:%d term:%d",(int)log.size(),log[0].index,log[0].term);
 }
 
@@ -237,7 +238,7 @@ bool raft<state_machine, command>::new_command(command cmd, int &term, int &inde
     term = current_term;
     index = log.size();
     log.push_back({cmd,term,index});
-    storage->persistent_log(log); // persist first, to avoid poweroff
+    //storage->persistent_log(log); // persist first, to avoid poweroff
     return true;
 }
 
@@ -290,7 +291,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
         
         // avoid unnecessary multiple candidate
         last_received_RPC_time = std::chrono::steady_clock::now();
-        storage->persistent_metadata(voteFor,current_term);
+        //storage->persistent_metadata(voteFor,current_term);
     }
     
     return 0;
@@ -354,7 +355,7 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
 
     log.resize(arg.prevLogIndex+arg.entries.size() + 1);
     std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1);
-    storage->persistent_log(log);
+    //storage->persistent_log(log);
     if(arg.leaderCommit > commitIndex)
         commitIndex = min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size());
 
@@ -508,8 +509,17 @@ void raft<state_machine, command>::run_background_commit() {
                     if (matchIndex[i] == (int)log.size() - 1) continue; // if match, don't send append entry
                     arg.prevLogIndex = nextIndex[i] - 1;
                     arg.prevLogTerm = log[arg.prevLogIndex].term;
-                    arg.entries.resize(min(log.size() - 1 - arg.prevLogIndex,10)); // so when begin(nexindex=logsize),entrysize = 0 even log doesn't match
-                    std::copy(log.begin() + arg.prevLogIndex + 1,log.end(),arg.entries.begin());
+                    //arg.entries.resize(1);
+                    if((int)log.size() - 1 - arg.prevLogIndex>10){
+                        arg.entries.resize(10);
+                        std::copy(log.begin() + arg.prevLogIndex + 1,log.begin() + arg.prevLogIndex + 11,arg.entries.begin());
+                    }else{
+                        arg.entries.resize((int)log.size() - 1 - arg.prevLogIndex);
+                        std::copy(log.begin() + arg.prevLogIndex + 1,log.end(),arg.entries.begin());
+                    }
+                    //arg.entries.resize(min((int)log.size() - 1 - arg.prevLogIndex,10)); std::cout<<"entrysize:"<<arg.entries.size()<<std::endl;
+                    //so when begin(nexindex=logsize),entrysize = 0 even log doesn't match
+                    //std::cout<<"entrysize----:"<<arg.entries.size()<<std::endl;
                     thread_pool->addObjJob(this, &raft::send_append_entries,i,arg);
                 }                
             }
@@ -622,7 +632,7 @@ template<typename state_machine, typename command>
 void raft<state_machine, command>::change_current_term(int term){
     current_term = term;
     voteFor = -1;
-    storage->persistent_metadata(-1,current_term);
+    //storage->persistent_metadata(-1,current_term);
 }
 
 template<typename state_machine, typename command>
