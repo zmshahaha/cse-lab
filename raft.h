@@ -340,9 +340,11 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     role = follower;
 
     // heartbeat
-    if(arg.prevLogIndex == -1 && arg.prevLogTerm == -1)
+    if(arg.prevLogTerm == -1){
+        commitIndex = arg.prevLogIndex;
         return 0;
-
+    }
+        
     if(arg.prevLogIndex > (int)log.size() - 1 || log[arg.prevLogIndex].term != arg.prevLogTerm)
         return 0;
     
@@ -374,14 +376,13 @@ void raft<state_machine, command>::handle_append_entries_reply(int target, const
     }
     
     // heartbeat reply
-    if(arg.prevLogIndex == -1 && arg.prevLogTerm == -1)
+    if(arg.prevLogTerm == -1)
         return;
 
     if(reply.success == true){
         nextIndex[target] = max(nextIndex[target] , arg.prevLogIndex+(int)arg.entries.size()+1);
         matchIndex[target] = nextIndex[target] - 1;
-    }
-    else{
+    }else{
         nextIndex[target]--;
     }
 }
@@ -505,7 +506,7 @@ void raft<state_machine, command>::run_background_commit() {
                     if (matchIndex[i] == (int)log.size() - 1) continue; // if match, don't send append entry
                     arg.prevLogIndex = nextIndex[i] - 1;
                     arg.prevLogTerm = log[arg.prevLogIndex].term;
-                    arg.entries.resize(min(log.size() - arg.prevLogIndex - 1,10)); // so when begin(nexindex=logsize),entrysize = 0 even log doesn't match
+                    arg.entries.resize(min(log.size() - 1 - arg.prevLogIndex,10)); // so when begin(nexindex=logsize),entrysize = 0 even log doesn't match
                     std::copy(log.begin() + arg.prevLogIndex + 1,log.end(),arg.entries.begin());
                     thread_pool->addObjJob(this, &raft::send_append_entries,(int)i,arg);
                 }                
@@ -570,10 +571,10 @@ void raft<state_machine, command>::send_heartbeat()
     arg.leaderId = my_id;
     arg.term = current_term;
     arg.leaderCommit = commitIndex;
-    arg.prevLogIndex = -1; //mark heartbeat
     arg.prevLogTerm = -1; //mark heartbeat
     for(int i=0;i<(int)rpc_clients.size();i++){
         if(i!=my_id){
+            arg.prevLogIndex = matchIndex[i]; // remind follower to change commitindex
             thread_pool->addObjJob(this, &raft::send_append_entries,(int)i,arg);
         }
     }
@@ -582,6 +583,7 @@ void raft<state_machine, command>::send_heartbeat()
 template<typename state_machine, typename command>
 void raft<state_machine, command>::change_leader_commit()
 {
+    // select matchindex's middle+1
     if(role == leader){
         int larger_match_commit_count;
         int smaller_match_commit_count;
