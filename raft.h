@@ -574,7 +574,7 @@ void raft<state_machine, command>::send_heartbeat()
     arg.prevLogTerm = -1; //mark heartbeat
     for(int i=0;i<(int)rpc_clients.size();i++){
         if(i!=my_id){
-            arg.prevLogIndex = matchIndex[i]; // remind follower to change commitindex
+            arg.prevLogIndex = min(matchIndex[i],commitIndex); // remind follower to change commitindex
             thread_pool->addObjJob(this, &raft::send_append_entries,(int)i,arg);
         }
     }
