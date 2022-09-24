@@ -586,16 +586,17 @@ void raft<state_machine, command>::change_leader_commit()
     if(role == leader){
         int larger_match_commit_count;
         int smaller_match_commit_count;
-        for(int i = 0 ; i < (int)rpc_clients.size() ; i++){
+        int range = (int)matchIndex.size();
+        for(int i = 0 ; i < range; i++){
             larger_match_commit_count = 0;
             smaller_match_commit_count = 0;
-            for(int j = 0 ; j < (int)rpc_clients.size() ; j++){
+            for(int j = 0 ; j < range ; j++){
                 if(j == my_id || j == i) continue;
                 if(matchIndex[i] > matchIndex[j]) smaller_match_commit_count++;
                 if(matchIndex[i] < matchIndex[j]) larger_match_commit_count++;
             }
-            if(smaller_match_commit_count <= (int)rpc_clients.size()/2 &&
-            larger_match_commit_count < (int)rpc_clients.size()/2){
+            if(smaller_match_commit_count <= range/2 &&
+            larger_match_commit_count < range/2){
                 if(log[matchIndex[i]].term == current_term){
                     commitIndex = matchIndex[i];
                 }
