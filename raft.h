@@ -233,9 +233,8 @@ bool raft<state_machine, command>::new_command(command cmd, int &term, int &inde
     
     term = current_term;
     index = log.size();
-    storage->persistent_log(log); // persist first, to avoid poweroff
     log.push_back({cmd,term,index});
-    
+    storage->persistent_log(log); // persist first, to avoid poweroff
     return true;
 }
 
@@ -352,12 +351,12 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
 
     log.resize(arg.prevLogIndex+arg.entries.size() + 1);
     std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1);
-    
+    storage->persistent_log(log);
     if(arg.leaderCommit > commitIndex)
         commitIndex = min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size());
 
     last_received_RPC_time = std::chrono::steady_clock::now();
-    storage->persistent_log(log);
+    
     //print_log();
     
     return 0;
@@ -532,7 +531,7 @@ void raft<state_machine, command>::run_background_apply() {
         // Your code here:
         if(commitIndex > lastApplied){
             for(; lastApplied < commitIndex ; lastApplied++){
-                state->apply_log(log[lastApplied+1].cmd);
+                (static_cast<raft_state_machine*>(state))->apply_log(static_cast<raft_command&>(log[lastApplied+1].cmd));
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
