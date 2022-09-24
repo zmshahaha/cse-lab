@@ -97,6 +97,7 @@ private:
     int lastApplied = 0;
     std::vector<int> nextIndex;
     std::vector<int> matchIndex;
+    int nodes;
 private:
     // RPC handlers
     int request_vote(request_vote_args arg, request_vote_reply& reply);
@@ -122,7 +123,7 @@ private:
     void print_log(); //just for debugging
 private:
     bool is_stopped();
-    int num_nodes() {return rpc_clients.size();}
+    int num_nodes() {return nodes;}
 
     // background workers    
     void run_background_ping();
@@ -158,10 +159,12 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
 
     // Your code here: 
     // Do the initialization
-    follower_election_timeout = my_id * 200 / (rpc_clients.size()-1) + 300;
-    matchIndex.resize(clients.size());
-    nextIndex.resize(clients.size());
+    nodes = (int)clients.size();
+    follower_election_timeout = my_id * 200 / (nodes-1) + 300;
+    matchIndex.resize(nodes);
+    nextIndex.resize(nodes);
     storage->read_data(voteFor,current_term,log);
+    
     //RAFT_LOG("log size:%d index:%d term:%d",(int)log.size(),log[0].index,log[0].term);
 }
 
@@ -309,7 +312,7 @@ void raft<state_machine, command>::handle_request_vote_reply(int target, const r
     // bug fixed: send heartbeat needs time, term can change and cause becoming leader in wrong term
     if(reply.vateGranted && role == candidate && current_term == arg.term){
         vote_count ++;
-        if(vote_count >= (int)(rpc_clients.size()/2+1)){
+        if(vote_count >= nodes/2+1){
             init_leader();
             //RAFT_LOG("I am leader now.");
         }
@@ -470,11 +473,11 @@ void raft<state_machine, command>::run_background_election() {
             arg.lastLogIndex = log.size()-1;
             arg.lastLogTerm = log[arg.lastLogIndex].term;
             grd.unlock();
-            for(int i=0;i<(int)rpc_clients.size();i++)
+            for(int i=0;i<nodes;i++)
             {
                 if(i!=my_id)
                 {
-                    thread_pool->addObjJob(this, &raft::send_request_vote,(int)i,arg);
+                    thread_pool->addObjJob(this, &raft::send_request_vote,i,arg);
                 }
             }
         }
@@ -500,14 +503,14 @@ void raft<state_machine, command>::run_background_commit() {
             arg.leaderId = my_id;
             arg.term = current_term;
             grd.unlock();
-            for(int i=0;i<(int)rpc_clients.size();i++){
+            for(int i=0;i<nodes;i++){
                 if(i != my_id && (int)log.size() > nextIndex[i]){
                     if (matchIndex[i] == (int)log.size() - 1) continue; // if match, don't send append entry
                     arg.prevLogIndex = nextIndex[i] - 1;
                     arg.prevLogTerm = log[arg.prevLogIndex].term;
                     arg.entries.resize(min(log.size() - 1 - arg.prevLogIndex,10)); // so when begin(nexindex=logsize),entrysize = 0 even log doesn't match
                     std::copy(log.begin() + arg.prevLogIndex + 1,log.end(),arg.entries.begin());
-                    thread_pool->addObjJob(this, &raft::send_append_entries,(int)i,arg);
+                    thread_pool->addObjJob(this, &raft::send_append_entries,i,arg);
                 }                
             }
             change_leader_commit();
@@ -571,10 +574,10 @@ void raft<state_machine, command>::send_heartbeat()
     arg.term = current_term;
     arg.leaderCommit = commitIndex;
     arg.prevLogTerm = -1; //mark heartbeat
-    for(int i=0;i<(int)rpc_clients.size();i++){
+    for(int i=0;i<nodes;i++){
         if(i!=my_id){
             arg.prevLogIndex = min(matchIndex[i],commitIndex); // remind follower to change commitindex
-            thread_pool->addObjJob(this, &raft::send_append_entries,(int)i,arg);
+            thread_pool->addObjJob(this, &raft::send_append_entries,i,arg);
         }
     }
 }
@@ -625,9 +628,11 @@ void raft<state_machine, command>::change_current_term(int term){
 template<typename state_machine, typename command>
 void raft<state_machine, command>::print_log(){
     char a[3000];
-    sprintf(a,"size:%3d ",(int)log.size());
+    int log_size = (int)log.size();
+    sprintf(a,"size:%3d ",log_size);
     sprintf(a+9,"cmt:%3d apl:%3d ",commitIndex,lastApplied);
-    for(int i = 0 ; i < (int)log.size() ; i++){
+    
+    for(int i = 0 ; i < log_size ; i++){
         sprintf(a+9+16+i*9,"%2d-%2d-%2d ",i,log[i].index,log[i].term);
     }
     RAFT_LOG("%s",a);
