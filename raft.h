@@ -164,8 +164,8 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
     follower_election_timeout = my_id * 200 / (nodes-1) + 300;
     matchIndex.resize(nodes);
     nextIndex.resize(nodes);
-    //storage->read_data(voteFor,current_term,log);
-    {voteFor = -1;current_term = 0; log.resize(1);log[0].term = 0;log[0].index = 0;}
+    storage->read_data(voteFor,current_term,log);
+    //{voteFor = -1;current_term = 0; log.resize(1);log[0].term = 0;log[0].index = 0;}
     //RAFT_LOG("log size:%d index:%d term:%d",(int)log.size(),log[0].index,log[0].term);
 }
 
@@ -216,7 +216,7 @@ bool raft<state_machine, command>::is_leader(int &term) {
 template<typename state_machine, typename command>
 void raft<state_machine, command>::start() {
     // Your code here:
-    //recover log??
+
     //RAFT_LOG("start");
     this->background_election = new std::thread(&raft::run_background_election, this);
     this->background_ping = new std::thread(&raft::run_background_ping, this);
@@ -238,7 +238,7 @@ bool raft<state_machine, command>::new_command(command cmd, int &term, int &inde
     term = current_term;
     index = log.size();
     log.push_back({cmd,term,index});
-    //storage->persistent_log(log); // persist first, to avoid poweroff
+    storage->persistent_log(log); // persist first, to avoid poweroff
     return true;
 }
 
@@ -279,9 +279,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
     if((voteFor == -1 || voteFor == args.candidateId) && role == follower)
     {
         int last_log_index = log.size() - 1;
-        if(log[last_log_index].term > args.lastLogTerm ||
-         (log[last_log_index].term == args.lastLogTerm &&
-          log[last_log_index].index > args.lastLogIndex)){
+        if(log[last_log_index].term > args.lastLogTerm || (log[last_log_index].term == args.lastLogTerm && log[last_log_index].index > args.lastLogIndex)){
             //RAFT_LOG("I refuse %d. It's term is %d.", args.candidateId, args.term);
             return 0;
         }
@@ -291,7 +289,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
         
         // avoid unnecessary multiple candidate
         last_received_RPC_time = std::chrono::steady_clock::now();
-        //storage->persistent_metadata(voteFor,current_term);
+        storage->persistent_metadata(voteFor,current_term);
     }
     
     return 0;
@@ -343,25 +341,30 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     role = follower;
 
     // heartbeat
-    if(arg.prevLogTerm == -1){
-        commitIndex = arg.prevLogIndex;
-        return 0;
-    }
+    if(arg.prevLogTerm == -1)
+        goto changecommit;
         
     if(arg.prevLogIndex > (int)log.size() - 1 || log[arg.prevLogIndex].term != arg.prevLogTerm)
         return 0;
     
     reply.success = true;
 
+    // if leader and me is same
+    if(arg.prevLogIndex != (int)log.size() - 1 || arg.entries.size() != 0)
+        goto changecommit;    
+    
+    // don't worry about deleting the match entry because the last entry is the prevlog last time, which has been checked 
     log.resize(arg.prevLogIndex+arg.entries.size() + 1);
     std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1);
-    //storage->persistent_log(log);
-    if(arg.leaderCommit > commitIndex)
-        commitIndex = min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size());
+    storage->persistent_log(log);
+    print_log();
+
+    changecommit:
+    commitIndex = max(commitIndex,min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size()));
 
     last_received_RPC_time = std::chrono::steady_clock::now();
     
-    //print_log();
+    
     
     return 0;
 }
@@ -385,8 +388,10 @@ void raft<state_machine, command>::handle_append_entries_reply(int target, const
     if(reply.success == true){
         nextIndex[target] = max(nextIndex[target] , arg.prevLogIndex+(int)arg.entries.size()+1);
         matchIndex[target] = nextIndex[target] - 1;
+    }else if(nextIndex[target] > 150){
+        nextIndex[target] -= 150;
     }else{
-        nextIndex[target]--;
+        nextIndex[target] = 1;
     }
 }
 
@@ -503,30 +508,30 @@ void raft<state_machine, command>::run_background_commit() {
             arg.leaderCommit = commitIndex;
             arg.leaderId = my_id;
             arg.term = current_term;
-            grd.unlock();
+            //grd.unlock();
             for(int i=0;i<nodes;i++){
-                if(i != my_id && (int)log.size() > nextIndex[i]){
-                    if (matchIndex[i] == (int)log.size() - 1) continue; // if match, don't send append entry
+                if(i != my_id && (int)log.size() > matchIndex[i] + 1){
                     arg.prevLogIndex = nextIndex[i] - 1;
                     arg.prevLogTerm = log[arg.prevLogIndex].term;
                     //arg.entries.resize(1);
-                    if((int)log.size() - 1 - arg.prevLogIndex>10){
-                        arg.entries.resize(10);
-                        std::copy(log.begin() + arg.prevLogIndex + 1,log.begin() + arg.prevLogIndex + 11,arg.entries.begin());
+                    if((int)log.size() - 1 - arg.prevLogIndex > 150){
+                        arg.entries.resize(150);
+                        std::copy(log.begin() + arg.prevLogIndex + 1,log.begin() + arg.prevLogIndex + 151,arg.entries.begin());
                     }else{
                         arg.entries.resize((int)log.size() - 1 - arg.prevLogIndex);
                         std::copy(log.begin() + arg.prevLogIndex + 1,log.end(),arg.entries.begin());
-                    }
-                    //arg.entries.resize(min((int)log.size() - 1 - arg.prevLogIndex,10)); std::cout<<"entrysize:"<<arg.entries.size()<<std::endl;
+                    }//std::cout<<"entrysize"<<arg.entries.size()<<std::endl;
+                    //arg.entries.resize((int)log.size() - 1 - arg.prevLogIndex); std::cout<<"entrysize:"<<arg.entries.size()<<std::endl;
+                    //std::copy(log.begin() + arg.prevLogIndex + 1,log.end(),arg.entries.begin());
                     //so when begin(nexindex=logsize),entrysize = 0 even log doesn't match
                     //std::cout<<"entrysize----:"<<arg.entries.size()<<std::endl;
                     thread_pool->addObjJob(this, &raft::send_append_entries,i,arg);
                 }                
             }
             change_leader_commit();
-            //print_log();
+            print_log();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }    
     
     return;
@@ -542,12 +547,16 @@ void raft<state_machine, command>::run_background_apply() {
     while (true) {
         if (is_stopped()) return;
         // Your code here:
-        if(commitIndex > lastApplied){
+        
+        if(commitIndex > lastApplied){std::unique_lock<std::mutex> grd(mtx);// may change in appendentry's copy
             for(; lastApplied < commitIndex ; lastApplied++){
-                (static_cast<raft_state_machine*>(state))->apply_log(static_cast<raft_command&>(log[lastApplied+1].cmd));
+RAFT_LOG("applying log %d",lastApplied+1);
+                try{state->apply_log(log[lastApplied+1].cmd);}
+                catch(const std::exception& e){std::cout<<e.what()<<std::endl; print_log();}
+                RAFT_LOG("applying log %d fin",lastApplied+1);
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }    
     return;
 }
@@ -586,7 +595,8 @@ void raft<state_machine, command>::send_heartbeat()
     arg.prevLogTerm = -1; //mark heartbeat
     for(int i=0;i<nodes;i++){
         if(i!=my_id){
-            arg.prevLogIndex = min(matchIndex[i],commitIndex); // remind follower to change commitindex
+            arg.prevLogIndex = matchIndex[i] ; // remind follower to change commitindex
+            
             thread_pool->addObjJob(this, &raft::send_append_entries,i,arg);
         }
     }
@@ -608,9 +618,8 @@ void raft<state_machine, command>::change_leader_commit()
                 if(matchIndex[i] > matchIndex[j]) smaller_match_commit_count++;
                 if(matchIndex[i] < matchIndex[j]) larger_match_commit_count++;
             }
-            if(smaller_match_commit_count <= range/2 &&
-            larger_match_commit_count < range/2){
-                if(log[matchIndex[i]].term == current_term){
+            if(smaller_match_commit_count <= range/2 && larger_match_commit_count < range/2){
+                if(log[matchIndex[i]].term == current_term){       //just can commit entry in my term
                     commitIndex = matchIndex[i];
                 }
                 break;
@@ -632,7 +641,7 @@ template<typename state_machine, typename command>
 void raft<state_machine, command>::change_current_term(int term){
     current_term = term;
     voteFor = -1;
-    //storage->persistent_metadata(-1,current_term);
+    storage->persistent_metadata(-1,current_term);
 }
 
 template<typename state_machine, typename command>
