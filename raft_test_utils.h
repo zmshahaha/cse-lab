@@ -297,6 +297,7 @@ int raft_group<state_machine, command>::num_committed(int log_idx) {
                 log_value = state->store[log_idx];
                 has_log = true;
             } else {
+                std::cout<<"storesize "<<state->store.size()<<" logidx "<<log_idx<<std::endl;
                 has_log = false;
             }
         }
@@ -309,6 +310,7 @@ int raft_group<state_machine, command>::num_committed(int log_idx) {
             }
         }
     }
+    std::cout<<"cnt:"<<cnt<<std::endl;
     return cnt;
 }
 

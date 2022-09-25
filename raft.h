@@ -94,8 +94,10 @@ private:
     int vote_count = 0;
     std::chrono::time_point<std::chrono::steady_clock> last_received_RPC_time = std::chrono::steady_clock::now();
     std::vector<log_entry<command>> log;
-    int commitIndex = 0;
-    int lastApplied = 0;
+    int commitIndex;
+    int lastApplied;
+    //int lastIncludedIndex = 0;
+    //int lastIncludedTerm = 0;
     std::vector<int> nextIndex;
     std::vector<int> matchIndex;
     int nodes;
@@ -117,11 +119,6 @@ private:
     void send_install_snapshot(int target, install_snapshot_args arg);
     void handle_install_snapshot_reply(int target, const install_snapshot_args& arg, const install_snapshot_reply& reply);
 
-    void send_heartbeat();
-    void change_leader_commit();
-    void init_leader();
-    void change_current_term(int term);
-    void print_log(); //just for debugging
 private:
     bool is_stopped();
     int num_nodes() {return nodes;}
@@ -133,8 +130,11 @@ private:
     void run_background_apply();
 
     // Your code here:
-
-
+    void send_heartbeat();
+    void change_leader_commit();
+    void init_leader();
+    void change_current_term(int term);
+    void print_log(std::string msg); //just for debugging
 };
 
 template<typename state_machine, typename command>
@@ -164,7 +164,14 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
     follower_election_timeout = my_id * 200 / (nodes-1) + 300;
     matchIndex.resize(nodes);
     nextIndex.resize(nodes);
-    storage->read_data(voteFor,current_term,log);
+    storage->read_metadata(voteFor,current_term);
+    storage->read_log(log);
+    std::vector<char> data;
+    storage->read_snapshot(log[0].index,log[0].term,data);
+    //std::cout<<"qwertyuiop"<<std::endl;
+    if(data.size()!=0){/* std::cout<<"init"<<std::endl; */state->apply_snapshot(data);}
+        
+    lastApplied = commitIndex = log[0].index;
     //{voteFor = -1;current_term = 0; log.resize(1);log[0].term = 0;log[0].index = 0;}
     //RAFT_LOG("log size:%d index:%d term:%d",(int)log.size(),log[0].index,log[0].term);
 }
@@ -236,7 +243,7 @@ bool raft<state_machine, command>::new_command(command cmd, int &term, int &inde
     }
     
     term = current_term;
-    index = log.size();
+    index = log.size() + log[0].index;
     log.push_back({cmd,term,index});
     storage->persistent_log(log); // persist first, to avoid poweroff
     return true;
@@ -246,6 +253,13 @@ template<typename state_machine, typename command>
 bool raft<state_machine, command>::save_snapshot() {
     // Your code here:
     //RAFT_LOG("save snapshot");
+    std::lock_guard<std::mutex> grd(mtx);
+    log[0].term = log[lastApplied-log[0].term].term;
+    log.erase(log.begin() + 1 , log.begin() + 1 + lastApplied - log[0].index);
+    log[0].index = lastApplied;
+    std::vector<char> data = state -> snapshot();
+    storage -> persistent_snapshot(log[0].index,log[0].term,data);
+    storage -> persistent_log(log);
     return true;
 }
 
@@ -344,26 +358,26 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     if(arg.prevLogTerm == -1)
         goto changecommit;
         
-    if(arg.prevLogIndex > (int)log.size() - 1 || log[arg.prevLogIndex].term != arg.prevLogTerm)
+    if(arg.prevLogIndex > log[0].index + (int)log.size() - 1 || log[arg.prevLogIndex - log[0].index].term != arg.prevLogTerm)
         return 0;
     
     reply.success = true;
 
     // if leader and me is same
-    if(arg.prevLogIndex == (int)log.size() - 1 && arg.entries.size() == 0)
+    if(arg.prevLogIndex == (int)log.size() - 1 +log[0].index && arg.entries.size() == 0)
         goto changecommit;    
     
     // don't worry about deleting the match entry because the last entry is the prevlog last time, which has been checked 
-    log.resize(arg.prevLogIndex+arg.entries.size() + 1);
-    std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1);
+    log.resize(arg.prevLogIndex+arg.entries.size() + 1 - log[0].index);
+    std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1 - log[0].index);
     storage->persistent_log(log);
     //print_log();
-
+//print_log("appent");
     changecommit:
-    RAFT_LOG("before cmt %d ldcmt %d prev %d ent %d",commitIndex,arg.leaderCommit,arg.prevLogIndex,(int)arg.entries.size());
+    //RAFT_LOG("before cmt %d ldcmt %d prev %d ent %d",commitIndex,arg.leaderCommit,arg.prevLogIndex,(int)arg.entries.size());
     commitIndex = max(commitIndex,min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size()));
-    RAFT_LOG("commitIndex %d",commitIndex);
-    print_log();
+    //RAFT_LOG("commitIndex %d",commitIndex);
+    
     last_received_RPC_time = std::chrono::steady_clock::now();
     
     
@@ -390,10 +404,15 @@ void raft<state_machine, command>::handle_append_entries_reply(int target, const
     if(reply.success == true){
         nextIndex[target] = max(nextIndex[target] , arg.prevLogIndex+(int)arg.entries.size()+1);
         matchIndex[target] = nextIndex[target] - 1;
-    }else if(nextIndex[target] > 150){
+        return;
+    }
+    
+    if(nextIndex[target] > log[0].index + 150){     
         nextIndex[target] -= 150;
+    }else if(nextIndex[target] > log[0].index + 1){
+        nextIndex[target] = log[0].index + 1;       // every nextidx > log[0].index must step through this stage,can't directly to log[0].index,otherwise delete some commit log
     }else{
-        nextIndex[target] = 1;
+        nextIndex[target] = log[0].index;           
     }
 }
 
@@ -401,6 +420,16 @@ void raft<state_machine, command>::handle_append_entries_reply(int target, const
 template<typename state_machine, typename command>
 int raft<state_machine, command>::install_snapshot(install_snapshot_args args, install_snapshot_reply& reply) {
     // Your code here:
+    std::unique_lock<std::mutex> grd(mtx);
+    reply.term = current_term;
+    if(args.term < current_term) return 0;
+    storage->persistent_snapshot(args.lastIncludedIndex,args.lastIncludedTerm,args.data);
+    state->apply_snapshot(args.data);
+    log.resize(1);
+    log[0].term = args.lastIncludedTerm;
+    log[0].index = args.lastIncludedIndex;
+    storage->persistent_log(log);
+    commitIndex = lastApplied = log[0].index;
     return 0;
 }
 
@@ -408,6 +437,14 @@ int raft<state_machine, command>::install_snapshot(install_snapshot_args args, i
 template<typename state_machine, typename command>
 void raft<state_machine, command>::handle_install_snapshot_reply(int target, const install_snapshot_args& arg, const install_snapshot_reply& reply) {
     // Your code here:
+    std::unique_lock<std::mutex> grd(mtx);
+    if(reply.term > current_term){
+        change_current_term(reply.term);
+        role = follower;
+        return;
+    }
+    matchIndex[target] = arg.lastIncludedIndex;
+    nextIndex[target] = arg.lastIncludedIndex + 1;
     return;
 }
 
@@ -512,26 +549,40 @@ void raft<state_machine, command>::run_background_commit() {
             arg.term = current_term;
             //grd.unlock();
             for(int i=0;i<nodes;i++){
-                if(i != my_id && (int)log.size() > matchIndex[i] + 1){
-                    arg.prevLogIndex = nextIndex[i] - 1;
-                    arg.prevLogTerm = log[arg.prevLogIndex].term;
+                if(i == my_id || (int)log.size() +log[0].index <= matchIndex[i] + 1) continue;
+
+                if(nextIndex[i] < log[0].index + 1){
+                    install_snapshot_args arg;
+                    arg.term = current_term;
+                    arg.leaderId = my_id;
+                    arg.lastIncludedIndex = log[0].index;
+                    arg.lastIncludedTerm = log[0].term;
+                    arg.offset = 0;
+                    arg.data = state->snapshot();
+                    arg.done = 1;
+                    thread_pool->addObjJob(this, &raft::send_install_snapshot,i,arg);
+                    continue;
+                }
+
+                arg.prevLogIndex = nextIndex[i] - 1;
+                arg.prevLogTerm = log[arg.prevLogIndex].term;
                     //arg.entries.resize(1);
-                    if((int)log.size() - 1 - arg.prevLogIndex > 150){
-                        arg.entries.resize(150);
-                        std::copy(log.begin() + arg.prevLogIndex + 1,log.begin() + arg.prevLogIndex + 151,arg.entries.begin());
-                    }else{
-                        arg.entries.resize((int)log.size() - 1 - arg.prevLogIndex);
-                        std::copy(log.begin() + arg.prevLogIndex + 1,log.end(),arg.entries.begin());
-                    }//std::cout<<"entrysize"<<arg.entries.size()<<std::endl;
+                if((int)log.size() - 1 - arg.prevLogIndex +log[0].index > 150){
+                    arg.entries.resize(150);
+                    std::copy(log.begin() + arg.prevLogIndex + 1 - log[0].index,log.begin() + arg.prevLogIndex - log[0].index + 151,arg.entries.begin());
+                }else{
+                    arg.entries.resize((int)log.size() - 1 - arg.prevLogIndex + log[0].index);
+                    std::copy(log.begin() + arg.prevLogIndex + 1 - log[0].index,log.end(),arg.entries.begin());
+                }
+                thread_pool->addObjJob(this, &raft::send_append_entries,i,arg);    
+                    //std::cout<<"entrysize"<<arg.entries.size()<<std::endl;
                     //arg.entries.resize((int)log.size() - 1 - arg.prevLogIndex); std::cout<<"entrysize:"<<arg.entries.size()<<std::endl;
                     //std::copy(log.begin() + arg.prevLogIndex + 1,log.end(),arg.entries.begin());
                     //so when begin(nexindex=logsize),entrysize = 0 even log doesn't match
-                    //std::cout<<"entrysize----:"<<arg.entries.size()<<std::endl;
-                    thread_pool->addObjJob(this, &raft::send_append_entries,i,arg);
-                }                
+                    //std::cout<<"entrysize----:"<<arg.entries.size()<<std::endl;            
             }
             change_leader_commit();
-            //print_log();
+            //print_log("leacmt");
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }    
@@ -552,11 +603,11 @@ void raft<state_machine, command>::run_background_apply() {
         
         if(commitIndex > lastApplied){std::unique_lock<std::mutex> grd(mtx);// may change in appendentry's copy
             for(; lastApplied < commitIndex ; lastApplied++){
-RAFT_LOG("applying log %d",lastApplied+1);
-print_log();
-                try{state->apply_log(log[lastApplied+1].cmd);}
-                catch(const std::exception& e){std::cout<<e.what()<<std::endl; print_log();}
-                RAFT_LOG("applying log %d fin",lastApplied+1);
+//RAFT_LOG("applying log %d",lastApplied+1);
+//print_log();
+                /* try{ */state->apply_log(log[lastApplied+1-log[0].index].cmd);/* } */
+                //catch(const std::exception& e){std::cout<<e.what()<<std::endl; print_log();}
+                //RAFT_LOG("applying log %d fin",lastApplied+1);
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -622,7 +673,7 @@ void raft<state_machine, command>::change_leader_commit()
                 if(matchIndex[i] < matchIndex[j]) larger_match_commit_count++;
             }
             if(smaller_match_commit_count <= range/2 && larger_match_commit_count < range/2){
-                if(log[matchIndex[i]].term == current_term){       //just can commit entry in my term
+                if(log[matchIndex[i] - log[0].index].term == current_term){       //just can commit entry in my term
                     commitIndex = matchIndex[i];
                 }
                 break;
@@ -648,14 +699,16 @@ void raft<state_machine, command>::change_current_term(int term){
 }
 
 template<typename state_machine, typename command>
-void raft<state_machine, command>::print_log(){
+void raft<state_machine, command>::print_log(std::string msg){
     char a[3000];
+    msg = '(' + msg + ')';
+    sprintf(a,"%s",msg.c_str());
     int log_size = (int)log.size();
-    sprintf(a,"size:%3d ",log_size);
-    sprintf(a+9,"cmt:%3d apl:%3d ",commitIndex,lastApplied);
+    sprintf(a+msg.size(),"size:%3d ",log_size);
+    sprintf(a+msg.size()+9,"cmt:%3d apl:%3d ",commitIndex,lastApplied);
     
     for(int i = 0 ; i < log_size ; i++){
-        sprintf(a+9+16+i*11,"%2d-%2d-%2d-%1d ",i,log[i].index,log[i].term,log[i].cmd.size());
+        sprintf(a+msg.size()+9+16+i*11,"%2d-%2d-%2d-%1d ",i,log[i].index,log[i].term,log[i].cmd.size());
     }
     RAFT_LOG("%s",a);
 }

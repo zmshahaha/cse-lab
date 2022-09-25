@@ -602,8 +602,8 @@ TEST_CASE(part4, basic_snapshot, "Basic snapshot")
     int leader = group->check_exact_one_leader();
     int killed_node = (leader + 1) % num_nodes;
     group->disable_node(killed_node);
-    for (int i = 1 ; i < 100; i++)
-        group->append_new_command(100 + i, num_nodes - 1);
+    for (int i = 1 ; i < 100; i++){std::cout<<i<<std::endl;
+        group->append_new_command(100 + i, num_nodes - 1);}
     leader = group->check_exact_one_leader();
     int other_node = (leader + 1) % num_nodes;
     if (other_node == killed_node) other_node = (leader + 2) % num_nodes;

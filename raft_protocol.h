@@ -109,7 +109,7 @@ public:
     int lastIncludedIndex;// the snapshot replaces all entries up through and including this index
     int lastIncludedTerm;// term of lastIncludedIndex
     int offset;// byte offset where chunk is positioned in the snapshot file
-    std::string data;// raw bytes of the snapshot chunk, starting at offset
+    std::vector<char> data;// raw bytes of the snapshot chunk, starting at offset
     bool done;// true if this is the last chunk
     
 };
