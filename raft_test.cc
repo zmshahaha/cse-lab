@@ -270,7 +270,7 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     int num_nodes = 5;
     list_raft_group *group = new list_raft_group(num_nodes);
     int value = 0;
-
+    std::cout<<"apend 0"<<std::endl;
     group->append_new_command(value++, num_nodes);
 
     // put leader and one follower in a partition
@@ -280,10 +280,10 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     group->disable_node((leader1 + 4) % num_nodes);
 
 	// submit lots of commands that won't commit
-    int temp_term, temp_index;
-    for (int i = 0; i < 50; i++)
-        group->nodes[leader1]->new_command(list_command(value++), temp_term, temp_index);
-    
+    int temp_term, temp_index;std::cout<<"leader:"<<leader1<<std::endl;
+    for (int i = 0; i < 50; i++){std::cout<<"apend "<<i+1<<std::endl;
+        group->nodes[leader1]->new_command(list_command(value++), temp_term, temp_index);}
+std::cout<<"1"<<std::endl;
 
     mssleep(500);
 
@@ -482,6 +482,7 @@ TEST_CASE(part3, persist2, "More persistence")
         group->enable_node((leader1 + 0) % num_nodes);
         group->enable_node((leader1 + 4) % num_nodes);
     }
+    std::cout<<"here"<<std::endl;
     group->append_new_command(1000, num_nodes);
     group->wait_commit(index, num_nodes, -1);
 
@@ -550,7 +551,7 @@ void figure_8_test(list_raft_group* group, int num_tries = 1000)
     for (int i = 0; i < num_nodes; i++) {
         group->restart(i);
     }
-
+std::cout<<"here"<<std::endl;
     group->append_new_command(1024, num_nodes);
 }
 

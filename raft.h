@@ -14,7 +14,7 @@
 #include "raft_storage.h"
 #include "raft_protocol.h"
 #include "raft_state_machine.h"
-#include "backward.hpp"
+
 #define min(x, y) ((x) < (y) ? (x) : (y))
 #define max(x, y) ((x) > (y) ? (x) : (y))
 template<typename state_machine, typename command>
@@ -350,18 +350,20 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     reply.success = true;
 
     // if leader and me is same
-    if(arg.prevLogIndex != (int)log.size() - 1 || arg.entries.size() != 0)
+    if(arg.prevLogIndex == (int)log.size() - 1 && arg.entries.size() == 0)
         goto changecommit;    
     
     // don't worry about deleting the match entry because the last entry is the prevlog last time, which has been checked 
     log.resize(arg.prevLogIndex+arg.entries.size() + 1);
     std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1);
     storage->persistent_log(log);
-    print_log();
+    //print_log();
 
     changecommit:
+    RAFT_LOG("before cmt %d ldcmt %d prev %d ent %d",commitIndex,arg.leaderCommit,arg.prevLogIndex,(int)arg.entries.size());
     commitIndex = max(commitIndex,min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size()));
-
+    RAFT_LOG("commitIndex %d",commitIndex);
+    print_log();
     last_received_RPC_time = std::chrono::steady_clock::now();
     
     
@@ -529,7 +531,7 @@ void raft<state_machine, command>::run_background_commit() {
                 }                
             }
             change_leader_commit();
-            print_log();
+            //print_log();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }    
@@ -551,6 +553,7 @@ void raft<state_machine, command>::run_background_apply() {
         if(commitIndex > lastApplied){std::unique_lock<std::mutex> grd(mtx);// may change in appendentry's copy
             for(; lastApplied < commitIndex ; lastApplied++){
 RAFT_LOG("applying log %d",lastApplied+1);
+print_log();
                 try{state->apply_log(log[lastApplied+1].cmd);}
                 catch(const std::exception& e){std::cout<<e.what()<<std::endl; print_log();}
                 RAFT_LOG("applying log %d fin",lastApplied+1);
@@ -652,7 +655,7 @@ void raft<state_machine, command>::print_log(){
     sprintf(a+9,"cmt:%3d apl:%3d ",commitIndex,lastApplied);
     
     for(int i = 0 ; i < log_size ; i++){
-        sprintf(a+9+16+i*9,"%2d-%2d-%2d ",i,log[i].index,log[i].term);
+        sprintf(a+9+16+i*11,"%2d-%2d-%2d-%1d ",i,log[i].index,log[i].term,log[i].cmd.size());
     }
     RAFT_LOG("%s",a);
 }

@@ -117,8 +117,13 @@ list_state_machine::list_state_machine() {
 
 void list_state_machine::apply_log(raft_command &cmd) {
     std::unique_lock<std::mutex> lock(mtx);
-    const list_command& list_cmd = dynamic_cast<const list_command&>(cmd);
-    store.push_back(list_cmd.value);
+    try{
+        const list_command& list_cmd = dynamic_cast<const list_command&>(cmd);
+        store.push_back(list_cmd.value);
+    }catch(const std::exception& e){
+        std::cout<<e.what()<<std::endl;
+    }
+    
     num_append_logs++;
 }
 
