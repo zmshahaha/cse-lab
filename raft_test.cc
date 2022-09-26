@@ -270,7 +270,7 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     int num_nodes = 5;
     list_raft_group *group = new list_raft_group(num_nodes);
     int value = 0;
-    std::cout<<"apend 0"<<std::endl;
+   // std::cout<<"apend 0"<<std::endl;
     group->append_new_command(value++, num_nodes);
 
     // put leader and one follower in a partition
@@ -280,10 +280,10 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     group->disable_node((leader1 + 4) % num_nodes);
 
 	// submit lots of commands that won't commit
-    int temp_term, temp_index;std::cout<<"leader:"<<leader1<<std::endl;
-    for (int i = 0; i < 50; i++){std::cout<<"apend "<<i+1<<std::endl;
+    int temp_term, temp_index;//std::cout<<"leader:"<<leader1<<std::endl;
+    for (int i = 0; i < 50; i++){//std::cout<<"apend "<<i+1<<std::endl;
         group->nodes[leader1]->new_command(list_command(value++), temp_term, temp_index);}
-std::cout<<"1"<<std::endl;
+//std::cout<<"1"<<std::endl;
 
     mssleep(500);
 
@@ -482,7 +482,7 @@ TEST_CASE(part3, persist2, "More persistence")
         group->enable_node((leader1 + 0) % num_nodes);
         group->enable_node((leader1 + 4) % num_nodes);
     }
-    std::cout<<"here"<<std::endl;
+    //std::cout<<"here"<<std::endl;
     group->append_new_command(1000, num_nodes);
     group->wait_commit(index, num_nodes, -1);
 
@@ -551,7 +551,7 @@ void figure_8_test(list_raft_group* group, int num_tries = 1000)
     for (int i = 0; i < num_nodes; i++) {
         group->restart(i);
     }
-std::cout<<"here"<<std::endl;
+//std::cout<<"here"<<std::endl;
     group->append_new_command(1024, num_nodes);
 }
 
@@ -602,7 +602,7 @@ TEST_CASE(part4, basic_snapshot, "Basic snapshot")
     int leader = group->check_exact_one_leader();
     int killed_node = (leader + 1) % num_nodes;
     group->disable_node(killed_node);
-    for (int i = 1 ; i < 100; i++){std::cout<<i<<std::endl;
+    for (int i = 1 ; i < 100; i++){//std::cout<<i<<std::endl;
         group->append_new_command(100 + i, num_nodes - 1);}
     leader = group->check_exact_one_leader();
     int other_node = (leader + 1) % num_nodes;
@@ -845,9 +845,9 @@ TEST_CASE(part5, snapshot_kv, "Persist key-value snapshot")
     mssleep(2000);
     group->enable_node(killed_node);
     mssleep(2000); // wait for the election
-    leader = group->check_exact_one_leader();
+    leader = group->check_exact_one_leader();//std::cout<<"848"<<std::endl;
     for (int i = 0; i < 50; i++)
-        check_kv_pair(group, i, true);
+        check_kv_pair(group, i, true);//std::cout<<"check i succ"<<i<<std::endl;}
     delete group;
 }
 

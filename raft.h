@@ -166,12 +166,13 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
     nextIndex.resize(nodes);
     storage->read_metadata(voteFor,current_term);
     storage->read_log(log);
+    
     std::vector<char> data;
     storage->read_snapshot(log[0].index,log[0].term,data);
     //std::cout<<"qwertyuiop"<<std::endl;
     if(data.size()!=0){/* std::cout<<"init"<<std::endl; */state->apply_snapshot(data);}
         
-    lastApplied = commitIndex = log[0].index;
+    lastApplied = commitIndex = log[0].index;//print_log("init");
     //{voteFor = -1;current_term = 0; log.resize(1);log[0].term = 0;log[0].index = 0;}
     //RAFT_LOG("log size:%d index:%d term:%d",(int)log.size(),log[0].index,log[0].term);
 }
@@ -420,6 +421,7 @@ void raft<state_machine, command>::handle_append_entries_reply(int target, const
 template<typename state_machine, typename command>
 int raft<state_machine, command>::install_snapshot(install_snapshot_args args, install_snapshot_reply& reply) {
     // Your code here:
+   // print_log("receive install snap");
     std::unique_lock<std::mutex> grd(mtx);
     reply.term = current_term;
     if(args.term < current_term) return 0;
@@ -515,8 +517,8 @@ void raft<state_machine, command>::run_background_election() {
             request_vote_args arg;
             arg.term = current_term;
             arg.candidateId = my_id;
-            arg.lastLogIndex = log.size()-1;
-            arg.lastLogTerm = log[arg.lastLogIndex].term;
+            arg.lastLogIndex = log.size() + log[0].index -1;
+            arg.lastLogTerm = log[arg.lastLogIndex - log[0].index].term;
             grd.unlock();
             for(int i=0;i<nodes;i++)
             {
@@ -565,7 +567,7 @@ void raft<state_machine, command>::run_background_commit() {
                 }
 
                 arg.prevLogIndex = nextIndex[i] - 1;
-                arg.prevLogTerm = log[arg.prevLogIndex].term;
+                arg.prevLogTerm = log[arg.prevLogIndex - log[0].index].term;
                     //arg.entries.resize(1);
                 if((int)log.size() - 1 - arg.prevLogIndex +log[0].index > 150){
                     arg.entries.resize(150);
@@ -685,7 +687,7 @@ void raft<state_machine, command>::change_leader_commit()
 template<typename state_machine, typename command>
 void raft<state_machine, command>::init_leader(){
     role = leader;
-    std::fill(nextIndex.begin(),nextIndex.end(),log.size());
+    std::fill(nextIndex.begin(),nextIndex.end(),log.size()+ log[0].index);
     std::fill(matchIndex.begin(),matchIndex.end(),0);
     send_heartbeat();
 }
@@ -708,7 +710,7 @@ void raft<state_machine, command>::print_log(std::string msg){
     sprintf(a+msg.size()+9,"cmt:%3d apl:%3d ",commitIndex,lastApplied);
     
     for(int i = 0 ; i < log_size ; i++){
-        sprintf(a+msg.size()+9+16+i*11,"%2d-%2d-%2d-%1d ",i,log[i].index,log[i].term,log[i].cmd.size());
+        sprintf(a+msg.size()+9+16+i*12,"%2d-%2d-%2d-%2d ",i,log[i].index,log[i].term,log[i].cmd.size());
     }
     RAFT_LOG("%s",a);
 }
