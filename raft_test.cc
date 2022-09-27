@@ -234,29 +234,28 @@ TEST_CASE(part2, rejoin, "Rejoin of partitioned leader")
     
     group->append_new_command(101, num_nodes);
     int leader1 = group->check_exact_one_leader();
-    //std::cout<<"leader network failure"<<std::endl;
+
     // leader network failure
     group->disable_node(leader1);
-    //std::cout<<"make old leader try to agree on some entries"<<std::endl;
+
     // make old leader try to agree on some entries
     int temp_term, temp_index;
     group->nodes[leader1]->new_command(list_command(102), temp_term, temp_index);
     group->nodes[leader1]->new_command(list_command(103), temp_term, temp_index);
     group->nodes[leader1]->new_command(list_command(104), temp_term, temp_index);
-    //std::cout<<"new leader commits, also for index=2"<<std::endl;
+
     // new leader commits, also for index=2
     int leader2 = group->check_exact_one_leader();
     group->append_new_command(103, 2);
-    //std::cout<<"new leader network failure"<<std::endl;
+
     // new leader network failure
     group->disable_node(leader2);
-    //std::cout<<"old leader connected again"<<std::endl;
+
 	// old leader connected again
     group->enable_node(leader1);
 
     group->append_new_command(104, 2);
 
-    //std::cout<<"all together now"<<std::endl;
 	// all together now
 	group->enable_node(leader2);
 
@@ -270,7 +269,7 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     int num_nodes = 5;
     list_raft_group *group = new list_raft_group(num_nodes);
     int value = 0;
-    std::cout<<"apend 0"<<std::endl;
+
     group->append_new_command(value++, num_nodes);
 
     // put leader and one follower in a partition
@@ -280,10 +279,10 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     group->disable_node((leader1 + 4) % num_nodes);
 
 	// submit lots of commands that won't commit
-    int temp_term, temp_index;//std::cout<<"leader:"<<leader1<<std::endl;
-    for (int i = 0; i < 50; i++){//std::cout<<"apend "<<i+1<<std::endl;
-        group->nodes[leader1]->new_command(list_command(value++), temp_term, temp_index);}
-std::cout<<"1"<<std::endl;
+    int temp_term, temp_index;
+    for (int i = 0; i < 50; i++)
+        group->nodes[leader1]->new_command(list_command(value++), temp_term, temp_index);
+    
 
     mssleep(500);
 
@@ -294,7 +293,7 @@ std::cout<<"1"<<std::endl;
     group->enable_node((leader1 + 2) % num_nodes);
     group->enable_node((leader1 + 3) % num_nodes);
     group->enable_node((leader1 + 4) % num_nodes);
-    std::cout<<"lots of successful commands to new group."<<std::endl;
+    
 	// lots of successful commands to new group.
     for (int i = 0; i < 50; i++) 
         group->append_new_command(value++, 3);
@@ -319,7 +318,6 @@ std::cout<<"1"<<std::endl;
     group->enable_node((leader1 + 0) % num_nodes);
     group->enable_node((leader1 + 1) % num_nodes);
     group->enable_node(other);
-    std::cout<<"lots of successful commands to new group2."<<std::endl;
 
 	// lots of successful commands to new group.
     for (int i = 0; i < 50; i++) 
@@ -329,7 +327,6 @@ std::cout<<"1"<<std::endl;
 	// now everyone
     for (int i = 0; i < num_nodes; i++)
         group->enable_node(i);
-    std::cout<<"end."<<std::endl;
 
     group->append_new_command(value++, num_nodes);
     delete group;
@@ -450,47 +447,40 @@ TEST_CASE(part3, persist2, "More persistence")
     int num_nodes = 5;
     list_raft_group *group = new list_raft_group(num_nodes);
     
-    int index = 1;int leader1;
+    int index = 1;
     for (int iters = 0; iters < 5; iters++) {
-        std::cout<<"-----------------------appending"<<10+index<<"-----------------------"<<std::endl;
-        group->append_new_command(10 + index, num_nodes);//23 term 17?????
-        std::cout<<"-----------------------appending"<<10+index<<"end--------------------"<<std::endl;
+        group->append_new_command(10 + index, num_nodes);
         index++;
 
-        leader1 = group->check_exact_one_leader();
-        std::cout<<"---------------------disablenode"<<leader1+1<<' '<<leader1+2<<"-----------------------"<<std::endl;
+        int leader1 = group->check_exact_one_leader();
+
         group->disable_node((leader1 + 1) % num_nodes);
         group->disable_node((leader1 + 2) % num_nodes);
-        std::cout<<"-----------------------appending"<<10+index<<"-----------------------"<<std::endl;
-        group->append_new_command(10 + index, num_nodes - 2);//21 term 17 leader 1 accept 0,1,4
+
+        group->append_new_command(10 + index, num_nodes - 2);
         index++;
 
-        std::cout<<"---------------------disablenode"<<leader1<<' '<<leader1+3<<' '<<leader1+4<<"-----------------------"<<std::endl;
+        
         group->disable_node((leader1 + 0) % num_nodes);
         group->disable_node((leader1 + 3) % num_nodes);
-        group->disable_node((leader1 + 4) % num_nodes);//0,1,4 have 21 other 20 
-        
-        std::cout<<"-------------restartandenable"<<leader1+1<<' '<<leader1+2<<"-----------------------"<<std::endl;
+        group->disable_node((leader1 + 4) % num_nodes);
+
         group->restart((leader1 + 1) % num_nodes);
         group->restart((leader1 + 2) % num_nodes);
         group->enable_node((leader1 + 1) % num_nodes);
-        group->enable_node((leader1 + 2) % num_nodes);//2,3 alive has 20
+        group->enable_node((leader1 + 2) % num_nodes);
 
         mssleep(1000);
-        std::cout<<"-------------restartandenable"<<leader1+3<<"-----------------------"<<std::endl;
-        group->restart((leader1 + 3) % num_nodes);
-        group->enable_node((leader1 + 3) % num_nodes); //4 alive has 21
-        std::cout<<"-----------------------appending"<<10+index<<"end--------------------"<<std::endl;
 
-        group->append_new_command(10 + index, num_nodes - 2);//234 22
+        group->restart((leader1 + 3) % num_nodes);
+        group->enable_node((leader1 + 3) % num_nodes);
+
+        group->append_new_command(10 + index, num_nodes - 2);
         index++;
-        std::cout<<"-------------restartandenable"<<leader1<<' '<<leader1+4<<"-----------------------"<<std::endl;
 
         group->enable_node((leader1 + 0) % num_nodes);
         group->enable_node((leader1 + 4) % num_nodes);
-        //std::cout<<group->nodes[leader1+1].state.store
     }
-    //std::cout<<"here"<<std::endl;
     group->append_new_command(1000, num_nodes);
     group->wait_commit(index, num_nodes, -1);
 
@@ -559,7 +549,7 @@ void figure_8_test(list_raft_group* group, int num_tries = 1000)
     for (int i = 0; i < num_nodes; i++) {
         group->restart(i);
     }
-//std::cout<<"here"<<std::endl;
+
     group->append_new_command(1024, num_nodes);
 }
 
@@ -599,7 +589,7 @@ TEST_CASE(part3, unreliable_figure_8, "Raft paper Figure 8 under unreliable netw
     int num_nodes = 5;
     list_raft_group *group = new list_raft_group(num_nodes);
     group->set_reliable(false);
-    figure_8_test(group,100);
+    figure_8_test(group, 100);
     delete group;
 }
 
@@ -610,8 +600,8 @@ TEST_CASE(part4, basic_snapshot, "Basic snapshot")
     int leader = group->check_exact_one_leader();
     int killed_node = (leader + 1) % num_nodes;
     group->disable_node(killed_node);
-    for (int i = 1 ; i < 100; i++){//std::cout<<i<<std::endl;
-        group->append_new_command(100 + i, num_nodes - 1);}
+    for (int i = 1 ; i < 100; i++)
+        group->append_new_command(100 + i, num_nodes - 1);
     leader = group->check_exact_one_leader();
     int other_node = (leader + 1) % num_nodes;
     if (other_node == killed_node) other_node = (leader + 2) % num_nodes;
@@ -657,8 +647,8 @@ TEST_CASE(part4, override_snapshot, "Overrive snapshot")
     mssleep(2000);
     group->restart(leader);
     group->append_new_command(1024, num_nodes);
-    ASSERT(group->states[leader]->num_append_logs < 50, "the snapshot does not work");    
-    delete group;  
+    ASSERT(group->states[leader]->num_append_logs < 50, "the snapshot does not work");
+    delete group;   
 }
 
 typedef raft_group<kv_state_machine, kv_command> kv_raft_group;
@@ -853,9 +843,9 @@ TEST_CASE(part5, snapshot_kv, "Persist key-value snapshot")
     mssleep(2000);
     group->enable_node(killed_node);
     mssleep(2000); // wait for the election
-    leader = group->check_exact_one_leader();//std::cout<<"848"<<std::endl;
+    leader = group->check_exact_one_leader();
     for (int i = 0; i < 50; i++)
-        check_kv_pair(group, i, true);//std::cout<<"check i succ"<<i<<std::endl;}
+        check_kv_pair(group, i, true);
     delete group;
 }
 

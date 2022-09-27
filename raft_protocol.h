@@ -93,8 +93,8 @@ unmarshall& operator>>(unmarshall &u, append_entries_args<command>& args) {
 class append_entries_reply {
 public:
     // Your code here
-    int term; //currentTerm for leader to update itself
-    bool success;// true if follower contained entry matching prevLogIndex and prevLogTerm
+    int term;                               //currentTerm for leader to update itself
+    bool success;                           // true if follower contained entry matching prevLogIndex and prevLogTerm
 };
 
 marshall& operator<<(marshall &m, const append_entries_reply& reply);
@@ -104,13 +104,13 @@ unmarshall& operator>>(unmarshall &m, append_entries_reply& reply);
 class install_snapshot_args {
 public:
     // Your code here
-    int term;       //leader’s term
-    int leaderId;// leaderId so follower can redirect clients
-    int lastIncludedIndex;// the snapshot replaces all entries up through and including this index
-    int lastIncludedTerm;// term of lastIncludedIndex
-    int offset;// byte offset where chunk is positioned in the snapshot file
-    std::vector<char> data;// raw bytes of the snapshot chunk, starting at offset
-    bool done;// true if this is the last chunk
+    int term;                               //leader’s term
+    int leaderId;                           // leaderId so follower can redirect clients
+    int lastIncludedIndex;                  // the snapshot replaces all entries up through and including this index
+    int lastIncludedTerm;                   // term of lastIncludedIndex
+    int offset;                             // byte offset where chunk is positioned in the snapshot file
+    std::vector<char> data;                 // raw bytes of the snapshot chunk, starting at offset
+    bool done;                              // true if this is the last chunk
     
 };
 

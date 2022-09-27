@@ -217,7 +217,7 @@ int raft_group<state_machine, command>::check_exact_one_leader() {
             bool is_leader = node->is_leader(term);
             if (is_leader) {
                 ASSERT(term > 0, "term " << term << " should not have a leader."); 
-                ASSERT(term_leaders.find(term) == term_leaders.end(), "term " << term << " has more than one leader."<<j<<" "<<term_leaders.find(term)->second);
+                ASSERT(term_leaders.find(term) == term_leaders.end(), "term " << term << " has more than one leader.");
                 term_leaders[term] = j;
             }
         }
@@ -225,7 +225,6 @@ int raft_group<state_machine, command>::check_exact_one_leader() {
             auto last_term = term_leaders.rbegin();
             return last_term->second; // return the leader index
         }
-        //printf("sleep\n");
         // sleep a while, in case the election is not successful.
         mssleep(500 + (random() % 10) * 30);
     }
@@ -265,7 +264,6 @@ int raft_group<state_machine, command>::check_same_term() {
 
 template<typename state_machine, typename command>
 void raft_group<state_machine, command>::disable_node(int i) {
-    //printf("disable node %d\n",i);
     rpcs* server = servers[i];
     std::vector<rpcc*> &client = clients[i];
     server->set_reachable(false);
@@ -275,7 +273,6 @@ void raft_group<state_machine, command>::disable_node(int i) {
 
 template<typename state_machine, typename command>
 void raft_group<state_machine, command>::enable_node(int i) {
-    //printf("enable node %d\n",i);
     rpcs* server = servers[i];
     std::vector<rpcc*> &client = clients[i];
     server->set_reachable(true);
@@ -287,7 +284,6 @@ template<typename state_machine, typename command>
 int raft_group<state_machine, command>::num_committed(int log_idx) {
     int cnt = 0;    
     int old_value = 0;
-    std::cout<<"logidx"<<log_idx<<std::endl;
     for (size_t i = 0; i < nodes.size(); i++) {
         list_state_machine *state = states[i];
         bool has_log;
@@ -298,7 +294,6 @@ int raft_group<state_machine, command>::num_committed(int log_idx) {
                 log_value = state->store[log_idx];
                 has_log = true;
             } else {
-                std::cout<<"node"<<i<<" storesize "<<state->store.size()<<" logidx "<<log_idx<<std::endl;
                 has_log = false;
             }
         }
@@ -311,7 +306,6 @@ int raft_group<state_machine, command>::num_committed(int log_idx) {
             }
         }
     }
-   std::cout<<"cnt:"<<cnt<<std::endl;
     return cnt;
 }
 
@@ -336,36 +330,31 @@ template<typename state_machine, typename command>
 int raft_group<state_machine, command>::append_new_command(int value, int expected_servers) {
     list_command cmd(value);
     auto start = std::chrono::system_clock::now();
-    int leader_idx = 0;int log_idx = -1;int temp_idx, temp_term;
-    //std::cout<<"begin"<<std::endl;
+    int leader_idx = 0;
     while (std::chrono::system_clock::now() < start + std::chrono::seconds(10)) {
-        //std::cout<<"begin loop"<<std::endl;
-        
+        int log_idx = -1;
         for (size_t i = 0; i < nodes.size(); i++) {
             leader_idx = (leader_idx + 1) % nodes.size();
             // FIXME: lock?
             if (!servers[leader_idx]->reachable()) continue;
 
-            
+            int temp_idx, temp_term;
             bool is_leader = nodes[leader_idx]->new_command(cmd, temp_term, temp_idx);
             if (is_leader) {
                 log_idx = temp_idx;
                 break;
             }
         }
-        //std::cout <<"leader:"<<leader_idx<<" log_idx:"<<log_idx<<std::endl;
         if (log_idx != -1) {
-            //std::cout <<"log_idx: "<<log_idx<<std::endl;
             auto check_start = std::chrono::system_clock::now();
             while (std::chrono::system_clock::now() < check_start + std::chrono::seconds(2)) {
                 int committed_server = num_committed(log_idx);
-                //std::cout<<"nun commited: " << committed_server << std::endl;
+                // std::cout << "nun commited: " << committed_server << std::endl;
                 if (committed_server >= expected_servers) {
                     // The log is committed!
                     int commited_value = get_committed_value(log_idx);
                     if (commited_value == value)
                         return log_idx; // and the log is what we want!
-                    //std::cout<<"expected:"<<value<<" but:"<<commited_value<<std::endl;
                 }
                 mssleep(20);
             }

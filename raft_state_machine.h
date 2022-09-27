@@ -81,7 +81,6 @@ unmarshall& operator>>(unmarshall &u, kv_command& cmd);
 class kv_state_machine : public raft_state_machine {
 private:
     std::map<std::string,std::string> kv_store;
-    std::mutex mtx;
 public:
     virtual ~kv_state_machine();
 

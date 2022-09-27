@@ -24,7 +24,7 @@ int kv_command::size() const {
 void kv_command::serialize(char* buf, int sz) const {
     // Your code here:
     if(sz !=size())return;
-    //std::cout<<"serialize"<<std::endl;
+
     memcpy(buf,&cmd_tp,sizeof(command_type));
     int key_size = (int)key.size();
     int val_size = (int)value.size();
@@ -32,25 +32,20 @@ void kv_command::serialize(char* buf, int sz) const {
     memcpy(buf+sizeof(command_type)+sizeof(int),key.c_str(),key_size);
     memcpy(buf+sizeof(command_type)+sizeof(int)+ALIGN(key_size),&val_size,sizeof(int));
     memcpy(buf+sizeof(command_type)+2*sizeof(int)+ALIGN(key_size),value.c_str(),val_size);
-    return;
 }
 
 void kv_command::deserialize(const char* buf, int sz) {
     // Your code here:
-        //std::cout<<"dump"<<std::endl;hexdump(buf,sz);
-        //std::cout<<"cmd_tpsize"<<2*(int)sizeof(int)<<std::endl;
-    int key_size = *(int*)(buf + sizeof(command_type));//std::cout<<"keysz"<<key_size<<"ALIGN"<<ALIGN(key_size)<<std::endl;
-    int val_size = *(int*)(buf + sizeof(command_type) + sizeof(int)+ALIGN(key_size));//std::cout<<"valsz"<<val_size<<"ALIGN"<<ALIGN(val_size)<<std::endl;
-    //int cmd_size = 12+ALIGN(key_size)+ALIGN(val_size);
-    //std::cout<<"sz:   "<<sz<<"size:     "<< cmd_size<<std::endl;
+    int key_size = *(int*)(buf + sizeof(command_type));
+    int val_size = *(int*)(buf + sizeof(command_type) + sizeof(int)+ALIGN(key_size));
+
     if(sz != (int)sizeof(command_type)+2*(int)sizeof(int)+ALIGN(key_size)+ALIGN(val_size)) return;   // if call size() return 12(str isn't inited) 
+    
     cmd_tp = *(command_type*)buf;
     const char* key_c_str = buf + sizeof(command_type) + sizeof(int);
     key.assign(key_c_str,key_size);
     const char* val_c_str = buf + sizeof(command_type) + 2*sizeof(int) + ALIGN(key_size);
     value.assign(val_c_str,val_size);
-//std::cout<<"command: cmd:"<<(int)cmd_tp<<" key:"<<key<<" val:"<<value<<std::endl;
-    return;
 }
 
 marshall& operator<<(marshall &m, const kv_command& cmd) {
@@ -70,12 +65,12 @@ kv_state_machine::~kv_state_machine() {
 }
 
 void kv_state_machine::apply_log(raft_command &cmd) {
-    //std::unique_lock<std::mutex> grd(mtx);
     kv_command &kv_cmd = dynamic_cast<kv_command&>(cmd);
     std::unique_lock<std::mutex> lock(kv_cmd.res->mtx);
     // Your code here:
     kv_cmd.res->key = kv_cmd.key;
     auto result = kv_store.find(kv_cmd.key);
+
     switch(kv_cmd.cmd_tp)
     {
     case kv_command::command_type::CMD_NONE:
@@ -112,6 +107,7 @@ void kv_state_machine::apply_log(raft_command &cmd) {
     default:
         kv_cmd.res->succ = false;
     }
+
     kv_cmd.res->done = true;
     kv_cmd.res->cv.notify_all();
     return;
@@ -119,9 +115,8 @@ void kv_state_machine::apply_log(raft_command &cmd) {
 
 std::vector<char> kv_state_machine::snapshot() {
     // Your code here:
-    //std::unique_lock<std::mutex> grd(mtx);
     std::vector<char> snapshot;
-   // std::cout<<"beforsnap"<<snapshot.size()<<std::endl;
+
     for(auto it : kv_store){
         int key_size = (int)it.first.size();
         int val_size = (int)it.second.size();
@@ -135,17 +130,15 @@ std::vector<char> kv_state_machine::snapshot() {
         memcpy(mem+sizeof(int)+ALIGN(key_size),&val_size,sizeof(int));
         memcpy(mem+2*sizeof(int)+ALIGN(key_size),it.second.c_str(),val_size);
     }
-    //std::cout<<"aftersnap"<<snapshot.size()<<std::endl;
     return snapshot;
 }
 
 void kv_state_machine::apply_snapshot(const std::vector<char>& snapshot) {
-    //std::unique_lock<std::mutex> grd(mtx);
     // Your code here:
     const char* mem = snapshot.data();
     int size = (int)snapshot.size();
-    //std::cout<<"snap"<<size<<std::endl;
     kv_store.clear();
+
     for(int it = 0 ; it < size ; ){
         std::string key,value;
 
@@ -157,7 +150,7 @@ void kv_state_machine::apply_snapshot(const std::vector<char>& snapshot) {
         it+=sizeof(int);
         value.assign(mem+it,val_size);
         it+=ALIGN(val_size);
-        //std::cout<<"keysz"<<key_size<<"valsz"<<val_size<<"key"<<key<<"val"<<value<<std::endl;
+
         kv_store.insert(std::make_pair(key,value));
-    }//std::cout<<"endappsnap"<<kv_store.size()<<std::endl;
+    }
 }

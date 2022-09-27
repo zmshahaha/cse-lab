@@ -43,10 +43,6 @@ raft_storage<command>::raft_storage(const std::string& dir):file_dir(dir)
 template<typename command>
 raft_storage<command>::~raft_storage() {
    // Your code here
-   /* std::string log_file = file_dir+"/log";
-   std::string metadata_file = file_dir +  "/metadata";
-   std::remove(log_file.c_str());
-   std::remove(metadata_file.c_str()); */
 }
 
 template<typename command>
@@ -70,7 +66,6 @@ void raft_storage<command>::persistent_log(std::vector<log_entry<command>> &log)
     // mark how much logs
     int log_size = (int)log.size();
     out_log.write((char *)&log_size,sizeof(int));
-//std::cout<<"writefilesize"<<log_size<<std::endl;
 
     for (auto &it : log) {
         int size = it.cmd.size();   // cmd size may diff from each other, so can't declare outside
@@ -116,18 +111,18 @@ void raft_storage<command>::read_log(std::vector<log_entry<command>> &log){
     std::unique_lock<std::mutex> grd_log(log_mtx);
     std::ifstream in_log;
     in_log.open(file_dir + "/log" , std::ios::binary);
-//std::cout<<"readfilesize"<<file_size(in_log)<<std::endl;
+
     log.resize(0);
     if(file_size(in_log) == 0){
         log_entry<command> new_entry;
         new_entry.index = 0;
         new_entry.term = 0;
-        log.push_back(new_entry);//std::cout<<"read data end"<<std::endl;
+        log.push_back(new_entry);
         return;
     }
 
     int log_size;
-    in_log.read((char*)&log_size,sizeof(int));//std::cout<<"readlogsize"<<log_size<<std::endl;
+    in_log.read((char*)&log_size,sizeof(int));
     for(int i = 0 ; i < log_size ; i++)
     {
         log_entry<command> new_entry;
@@ -138,7 +133,7 @@ void raft_storage<command>::read_log(std::vector<log_entry<command>> &log){
         in_log.read((char *) &size, sizeof(int));
         buf = new char [size];
         in_log.read(buf, size);
-        new_entry.cmd.deserialize(buf, size);//std::cout<<"size"<<size<<new_entry.cmd.size()<<std::endl;
+        new_entry.cmd.deserialize(buf, size);
         log.push_back(new_entry);
         delete [] buf;
     }
@@ -154,7 +149,6 @@ void raft_storage<command>::read_snapshot(int& lastIncludedIndex,int& lastInclud
     if(size == 0){
         lastIncludedIndex = 0;
         lastIncludedIndex = 0;
-        //data.resize(0);
         return;
     }
 
