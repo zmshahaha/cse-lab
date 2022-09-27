@@ -287,6 +287,7 @@ template<typename state_machine, typename command>
 int raft_group<state_machine, command>::num_committed(int log_idx) {
     int cnt = 0;    
     int old_value = 0;
+    std::cout<<"logidx"<<log_idx<<std::endl;
     for (size_t i = 0; i < nodes.size(); i++) {
         list_state_machine *state = states[i];
         bool has_log;
@@ -297,7 +298,7 @@ int raft_group<state_machine, command>::num_committed(int log_idx) {
                 log_value = state->store[log_idx];
                 has_log = true;
             } else {
-                //std::cout<<"storesize "<<state->store.size()<<" logidx "<<log_idx<<std::endl;
+                std::cout<<"node"<<i<<" storesize "<<state->store.size()<<" logidx "<<log_idx<<std::endl;
                 has_log = false;
             }
         }
@@ -310,7 +311,7 @@ int raft_group<state_machine, command>::num_committed(int log_idx) {
             }
         }
     }
-   // std::cout<<"cnt:"<<cnt<<std::endl;
+   std::cout<<"cnt:"<<cnt<<std::endl;
     return cnt;
 }
 
@@ -335,17 +336,17 @@ template<typename state_machine, typename command>
 int raft_group<state_machine, command>::append_new_command(int value, int expected_servers) {
     list_command cmd(value);
     auto start = std::chrono::system_clock::now();
-    int leader_idx = 0;
+    int leader_idx = 0;int log_idx = -1;int temp_idx, temp_term;
     //std::cout<<"begin"<<std::endl;
     while (std::chrono::system_clock::now() < start + std::chrono::seconds(10)) {
         //std::cout<<"begin loop"<<std::endl;
-        int log_idx = -1;
+        
         for (size_t i = 0; i < nodes.size(); i++) {
             leader_idx = (leader_idx + 1) % nodes.size();
             // FIXME: lock?
             if (!servers[leader_idx]->reachable()) continue;
 
-            int temp_idx, temp_term;
+            
             bool is_leader = nodes[leader_idx]->new_command(cmd, temp_term, temp_idx);
             if (is_leader) {
                 log_idx = temp_idx;

@@ -450,39 +450,45 @@ TEST_CASE(part3, persist2, "More persistence")
     int num_nodes = 5;
     list_raft_group *group = new list_raft_group(num_nodes);
     
-    int index = 1;
+    int index = 1;int leader1;
     for (int iters = 0; iters < 5; iters++) {
-        group->append_new_command(10 + index, num_nodes);
+        std::cout<<"-----------------------appending"<<10+index<<"-----------------------"<<std::endl;
+        group->append_new_command(10 + index, num_nodes);//23 term 17?????
+        std::cout<<"-----------------------appending"<<10+index<<"end--------------------"<<std::endl;
         index++;
 
-        int leader1 = group->check_exact_one_leader();
-
+        leader1 = group->check_exact_one_leader();
+        std::cout<<"---------------------disablenode"<<leader1+1<<' '<<leader1+2<<"-----------------------"<<std::endl;
         group->disable_node((leader1 + 1) % num_nodes);
         group->disable_node((leader1 + 2) % num_nodes);
-
-        group->append_new_command(10 + index, num_nodes - 2);
+        std::cout<<"-----------------------appending"<<10+index<<"-----------------------"<<std::endl;
+        group->append_new_command(10 + index, num_nodes - 2);//21 term 17 leader 1 accept 0,1,4
         index++;
 
-        
+        std::cout<<"---------------------disablenode"<<leader1<<' '<<leader1+3<<' '<<leader1+4<<"-----------------------"<<std::endl;
         group->disable_node((leader1 + 0) % num_nodes);
         group->disable_node((leader1 + 3) % num_nodes);
-        group->disable_node((leader1 + 4) % num_nodes);
-
+        group->disable_node((leader1 + 4) % num_nodes);//0,1,4 have 21 other 20 
+        
+        std::cout<<"-------------restartandenable"<<leader1+1<<' '<<leader1+2<<"-----------------------"<<std::endl;
         group->restart((leader1 + 1) % num_nodes);
         group->restart((leader1 + 2) % num_nodes);
         group->enable_node((leader1 + 1) % num_nodes);
-        group->enable_node((leader1 + 2) % num_nodes);
+        group->enable_node((leader1 + 2) % num_nodes);//2,3 alive has 20
 
         mssleep(1000);
-
+        std::cout<<"-------------restartandenable"<<leader1+3<<"-----------------------"<<std::endl;
         group->restart((leader1 + 3) % num_nodes);
-        group->enable_node((leader1 + 3) % num_nodes);
+        group->enable_node((leader1 + 3) % num_nodes); //4 alive has 21
+        std::cout<<"-----------------------appending"<<10+index<<"end--------------------"<<std::endl;
 
-        group->append_new_command(10 + index, num_nodes - 2);
+        group->append_new_command(10 + index, num_nodes - 2);//234 22
         index++;
+        std::cout<<"-------------restartandenable"<<leader1<<' '<<leader1+4<<"-----------------------"<<std::endl;
 
         group->enable_node((leader1 + 0) % num_nodes);
         group->enable_node((leader1 + 4) % num_nodes);
+        //std::cout<<group->nodes[leader1+1].state.store
     }
     //std::cout<<"here"<<std::endl;
     group->append_new_command(1000, num_nodes);

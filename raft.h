@@ -30,6 +30,15 @@ friend class thread_pool;
         printf("[%s:%d][node %d term %d][role %d] " fmt "\n", __FILE__, __LINE__, my_id, current_term,role, ##args); \
     } while(0);
 
+#define ASSERT(condition, message) \
+    do { \
+        if (! (condition)) { \
+            std::cerr << "Assertion `" #condition "` failed in " << __FILE__ \
+                      << ":" << __LINE__ << " msg: " << message << std::endl; \
+            std::terminate(); \
+        } \
+    } while (false)
+
 public:
     raft(
         rpcs* rpc_server,
@@ -165,7 +174,7 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
     std::vector<char> data;
     storage->read_snapshot(log[0].index,log[0].term,data);
     //std::cout<<"qwertyuiop"<<std::endl;
-    if(data.size()!=0){/* std::cout<<"init"<<std::endl; */state->apply_snapshot(data);}
+    if(data.size()!=0){std::cout<<"initsnap"<<std::endl;state->apply_snapshot(data);}
         
     lastApplied = commitIndex = log[0].index;//print_log("init");
     //{voteFor = -1;current_term = 0; log.resize(1);log[0].term = 0;log[0].index = 0;}
@@ -247,6 +256,7 @@ bool raft<state_machine, command>::new_command(command cmd, int &term, int &inde
     index = log.size() + log[0].index;
     log.push_back({cmd,term,index});
     storage->persistent_log(log); // persist first, to avoid poweroff
+    print_log("newcmd");
     return true;
 }
 
@@ -329,7 +339,7 @@ void raft<state_machine, command>::handle_request_vote_reply(int target, const r
         vote_count ++;
         if(vote_count >= nodes/2+1){
             init_leader();
-            //RAFT_LOG("I am leader now.");
+            print_log("I am leader now.");
         }
     }
 }
@@ -374,13 +384,13 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1 - log[0].index);
     storage->persistent_log(log);
     //print_log();
-print_log("appent");
+
     changecommit:
     //RAFT_LOG("before cmt %d ldcmt %d prev %d ent %d",commitIndex,arg.leaderCommit,arg.prevLogIndex,(int)arg.entries.size());
     // avoid new elected leader's cmt is too small or leader's matchidx[i](when ping, store in prevlogidx) doesn't up to date
     commitIndex = max(commitIndex,min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size()));
     //RAFT_LOG("commitIndex %d",commitIndex);
-    
+ print_log("appent");   
     last_received_RPC_time = std::chrono::steady_clock::now();
     
     
@@ -544,8 +554,9 @@ void raft<state_machine, command>::run_background_commit() {
     while (true) {
         if (is_stopped()) return;
         // Your code here:
+        std::unique_lock<std::mutex> grd(mtx);
         if (role == leader){
-            std::unique_lock<std::mutex> grd(mtx);
+        //i lock there before, but other thread can change my role after role == leader is true   
             append_entries_args<command> arg;
             arg.leaderCommit = commitIndex;
             arg.leaderId = my_id;
@@ -604,13 +615,15 @@ void raft<state_machine, command>::run_background_apply() {
         if (is_stopped()) return;
         // Your code here:
         
-        if(commitIndex > lastApplied){std::unique_lock<std::mutex> grd(mtx);// may change in appendentry's copy
+        if(commitIndex > lastApplied){
+            std::unique_lock<std::mutex> grd(mtx);
             for(; lastApplied < commitIndex ; lastApplied++){
-//RAFT_LOG("applying log %d",lastApplied+1);
-//print_log();
-                /* try{ */state->apply_log(log[lastApplied+1-log[0].index].cmd);/* } */
-                //catch(const std::exception& e){std::cout<<e.what()<<std::endl; print_log();}
-                //RAFT_LOG("applying log %d fin",lastApplied+1);
+                try{
+                    state->apply_log(log[lastApplied+1-log[0].index].cmd);
+                }catch(const std::exception& e){
+                    std::cout<<e.what()<<std::endl;
+                    ASSERT(0,"node"<<my_id<<" apply_log"<<lastApplied+1-log[0].index<<" log_size"<<log.size());
+                }
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
