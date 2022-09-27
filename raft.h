@@ -598,6 +598,7 @@ void raft<state_machine, command>::run_background_commit() {
             change_leader_commit();
             print_log("leacmt");
         }
+        grd.unlock();
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }    
     
