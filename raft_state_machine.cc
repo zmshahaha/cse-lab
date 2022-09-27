@@ -70,6 +70,7 @@ kv_state_machine::~kv_state_machine() {
 }
 
 void kv_state_machine::apply_log(raft_command &cmd) {
+    //std::unique_lock<std::mutex> grd(mtx);
     kv_command &kv_cmd = dynamic_cast<kv_command&>(cmd);
     std::unique_lock<std::mutex> lock(kv_cmd.res->mtx);
     // Your code here:
@@ -118,6 +119,7 @@ void kv_state_machine::apply_log(raft_command &cmd) {
 
 std::vector<char> kv_state_machine::snapshot() {
     // Your code here:
+    //std::unique_lock<std::mutex> grd(mtx);
     std::vector<char> snapshot;
    // std::cout<<"beforsnap"<<snapshot.size()<<std::endl;
     for(auto it : kv_store){
@@ -138,6 +140,7 @@ std::vector<char> kv_state_machine::snapshot() {
 }
 
 void kv_state_machine::apply_snapshot(const std::vector<char>& snapshot) {
+    //std::unique_lock<std::mutex> grd(mtx);
     // Your code here:
     const char* mem = snapshot.data();
     int size = (int)snapshot.size();

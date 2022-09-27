@@ -270,7 +270,7 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     int num_nodes = 5;
     list_raft_group *group = new list_raft_group(num_nodes);
     int value = 0;
-   // std::cout<<"apend 0"<<std::endl;
+    std::cout<<"apend 0"<<std::endl;
     group->append_new_command(value++, num_nodes);
 
     // put leader and one follower in a partition
@@ -283,7 +283,7 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     int temp_term, temp_index;//std::cout<<"leader:"<<leader1<<std::endl;
     for (int i = 0; i < 50; i++){//std::cout<<"apend "<<i+1<<std::endl;
         group->nodes[leader1]->new_command(list_command(value++), temp_term, temp_index);}
-//std::cout<<"1"<<std::endl;
+std::cout<<"1"<<std::endl;
 
     mssleep(500);
 
@@ -294,7 +294,7 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     group->enable_node((leader1 + 2) % num_nodes);
     group->enable_node((leader1 + 3) % num_nodes);
     group->enable_node((leader1 + 4) % num_nodes);
-    
+    std::cout<<"lots of successful commands to new group."<<std::endl;
 	// lots of successful commands to new group.
     for (int i = 0; i < 50; i++) 
         group->append_new_command(value++, 3);
@@ -319,6 +319,7 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
     group->enable_node((leader1 + 0) % num_nodes);
     group->enable_node((leader1 + 1) % num_nodes);
     group->enable_node(other);
+    std::cout<<"lots of successful commands to new group2."<<std::endl;
 
 	// lots of successful commands to new group.
     for (int i = 0; i < 50; i++) 
@@ -328,6 +329,7 @@ TEST_CASE(part2, backup, "Leader backs up quickly over incorrect follower logs")
 	// now everyone
     for (int i = 0; i < num_nodes; i++)
         group->enable_node(i);
+    std::cout<<"end."<<std::endl;
 
     group->append_new_command(value++, num_nodes);
     delete group;
@@ -591,7 +593,7 @@ TEST_CASE(part3, unreliable_figure_8, "Raft paper Figure 8 under unreliable netw
     int num_nodes = 5;
     list_raft_group *group = new list_raft_group(num_nodes);
     group->set_reliable(false);
-    figure_8_test(group, 100);
+    figure_8_test(group,100);
     delete group;
 }
 
@@ -649,8 +651,8 @@ TEST_CASE(part4, override_snapshot, "Overrive snapshot")
     mssleep(2000);
     group->restart(leader);
     group->append_new_command(1024, num_nodes);
-    ASSERT(group->states[leader]->num_append_logs < 50, "the snapshot does not work");
-    delete group;   
+    ASSERT(group->states[leader]->num_append_logs < 50, "the snapshot does not work");    
+    delete group;  
 }
 
 typedef raft_group<kv_state_machine, kv_command> kv_raft_group;

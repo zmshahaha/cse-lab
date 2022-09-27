@@ -96,8 +96,6 @@ private:
     std::vector<log_entry<command>> log;
     int commitIndex;
     int lastApplied;
-    //int lastIncludedIndex = 0;
-    //int lastIncludedTerm = 0;
     std::vector<int> nextIndex;
     std::vector<int> matchIndex;
     int nodes;
@@ -152,12 +150,9 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
     background_apply(nullptr)
 {
     thread_pool = new ThrPool(32);
-
+    
     // Register the rpcs.
-    rpc_server->reg(raft_rpc_opcodes::op_request_vote, this, &raft::request_vote);
-    rpc_server->reg(raft_rpc_opcodes::op_append_entries, this, &raft::append_entries);
-    rpc_server->reg(raft_rpc_opcodes::op_install_snapshot, this, &raft::install_snapshot);
-
+    
     // Your code here: 
     // Do the initialization
     nodes = (int)clients.size();
@@ -175,6 +170,11 @@ raft<state_machine, command>::raft(rpcs* server, std::vector<rpcc*> clients, int
     lastApplied = commitIndex = log[0].index;//print_log("init");
     //{voteFor = -1;current_term = 0; log.resize(1);log[0].term = 0;log[0].index = 0;}
     //RAFT_LOG("log size:%d index:%d term:%d",(int)log.size(),log[0].index,log[0].term);
+    // other thread running rpcs can change data during init, so reg rpcs should be last work
+    rpc_server->reg(raft_rpc_opcodes::op_request_vote, this, &raft::request_vote);
+    rpc_server->reg(raft_rpc_opcodes::op_append_entries, this, &raft::append_entries);
+    rpc_server->reg(raft_rpc_opcodes::op_install_snapshot, this, &raft::install_snapshot);
+
 }
 
 template<typename state_machine, typename command>
@@ -255,7 +255,7 @@ bool raft<state_machine, command>::save_snapshot() {
     // Your code here:
     //RAFT_LOG("save snapshot");
     std::lock_guard<std::mutex> grd(mtx);
-    log[0].term = log[lastApplied-log[0].term].term;
+    log[0].term = log[lastApplied-log[0].index].term;
     log.erase(log.begin() + 1 , log.begin() + 1 + lastApplied - log[0].index);
     log[0].index = lastApplied;
     std::vector<char> data = state -> snapshot();
@@ -286,15 +286,16 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
     }
     
     if(args.term > current_term){
-        role = raft_role::follower;
+        role = follower;
         change_current_term(args.term);
     }
     
+    // main logic of reqvote
     // a candidate can send vote req multiple time because of network failure
     if((voteFor == -1 || voteFor == args.candidateId) && role == follower)
     {
-        int last_log_index = log.size() - 1;
-        if(log[last_log_index].term > args.lastLogTerm || (log[last_log_index].term == args.lastLogTerm && log[last_log_index].index > args.lastLogIndex)){
+        int last_log = log.size() - 1; // pos in log, not the index
+        if(log[last_log].term > args.lastLogTerm || (log[last_log].term == args.lastLogTerm && log[last_log].index > args.lastLogIndex)){
             //RAFT_LOG("I refuse %d. It's term is %d.", args.candidateId, args.term);
             return 0;
         }
@@ -302,7 +303,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args, request_v
         voteFor = args.candidateId;
         reply.vateGranted = true;
         
-        // avoid unnecessary multiple candidate
+        // avoid becoming unnecessary multiple candidate
         last_received_RPC_time = std::chrono::steady_clock::now();
         storage->persistent_metadata(voteFor,current_term);
     }
@@ -373,9 +374,10 @@ int raft<state_machine, command>::append_entries(append_entries_args<command> ar
     std::copy(arg.entries.begin(),arg.entries.end(),log.begin() + arg.prevLogIndex + 1 - log[0].index);
     storage->persistent_log(log);
     //print_log();
-//print_log("appent");
+print_log("appent");
     changecommit:
     //RAFT_LOG("before cmt %d ldcmt %d prev %d ent %d",commitIndex,arg.leaderCommit,arg.prevLogIndex,(int)arg.entries.size());
+    // avoid new elected leader's cmt is too small or leader's matchidx[i](when ping, store in prevlogidx) doesn't up to date
     commitIndex = max(commitIndex,min(arg.leaderCommit,arg.prevLogIndex+(int)arg.entries.size()));
     //RAFT_LOG("commitIndex %d",commitIndex);
     
@@ -505,8 +507,7 @@ void raft<state_machine, command>::run_background_election() {
         auto current_time = std::chrono::steady_clock::now();
         int timeval = std::chrono::duration_cast<std::chrono::milliseconds>(current_time-last_received_RPC_time).count();
 
-        if((role == candidate && timeval > candidate_election_timeout)|| 
-            (role == follower && timeval > follower_election_timeout))
+        if((role == candidate && timeval > candidate_election_timeout) || (role == follower && timeval > follower_election_timeout))
         {
             //RAFT_LOG("elect leader id %d term %d",my_id,current_term);
             std::unique_lock<std::mutex> grd(mtx);
@@ -584,7 +585,7 @@ void raft<state_machine, command>::run_background_commit() {
                     //std::cout<<"entrysize----:"<<arg.entries.size()<<std::endl;            
             }
             change_leader_commit();
-            //print_log("leacmt");
+            print_log("leacmt");
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }    

@@ -31,7 +31,7 @@ template<typename command>
 raft_storage<command>::raft_storage(const std::string& dir):file_dir(dir)
 {
     // Your code here
-    // create files when they doesn't exist 
+    // create files if they don't exist 
     std::ofstream out_log;
     out_log.open(file_dir + "/log", std::ios::app);
     std::ofstream out_metadata;
@@ -75,8 +75,8 @@ void raft_storage<command>::persistent_log(std::vector<log_entry<command>> &log)
     for (auto &it : log) {
         int size = it.cmd.size();   // cmd size may diff from each other, so can't declare outside
         char* buf = new char[size];
-        try{it.cmd.serialize(buf, size);}
-        catch(const std::exception& e){std::cout<<e.what()<<std::endl;std::cout<<it.index<<std::endl;}
+        it.cmd.serialize(buf, size);
+        
         out_log.write((char *) &it.index, sizeof(int));
         out_log.write((char *) &it.term, sizeof(int));
         out_log.write((char *) &size, sizeof(int));
