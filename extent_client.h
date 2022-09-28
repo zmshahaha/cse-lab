@@ -12,6 +12,7 @@ class extent_client {
   rpcc *cl;
 
  public:
+  extent_client();
   extent_client(std::string dst);
 
   extent_protocol::status create(uint32_t type, extent_protocol::extentid_t &eid);

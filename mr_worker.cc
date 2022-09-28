@@ -32,7 +32,26 @@ struct KeyVal {
 vector<KeyVal> Map(const string &filename, const string &content)
 {
 	// Copy your code from mr_sequential.cc here.
+    vector<KeyVal> wordsMap;
+    string tempString=content;
+    
+    //not a letter,change to space
+    for(int i=0;i<(int)tempString.size();i++)
+        if(!(tempString[i]>='a'&&tempString[i]<='z')&&!(tempString[i]>='A'&&tempString[i]<='Z'))
+            tempString[i]=' ';
+    
+    istringstream wordsStream(tempString);
+    string tempKey;
+    KeyVal keyVal;
 
+    while(wordsStream >> tempKey){
+        cout<<tempKey<<endl;
+        keyVal.key=tempKey;
+        keyVal.val="1";
+        wordsMap.push_back(keyVal);
+    }
+
+    return wordsMap;
 }
 
 //
@@ -43,7 +62,10 @@ vector<KeyVal> Map(const string &filename, const string &content)
 string Reduce(const string &key, const vector < string > &values)
 {
     // Copy your code from mr_sequential.cc here.
-
+    long out = 0;
+    for(string value : values)
+        out+=atol(value.c_str());
+    return to_string(out);
 }
 
 
@@ -57,8 +79,8 @@ public:
 	void doWork();
 
 private:
-	void doMap(int index, const vector<string> &filenames);
-	void doReduce(int index);
+	void doMap(int index, const string &filename);
+	void doReduce(int index,int mapnum);
 	void doSubmit(mr_tasktype taskType, int index);
 
 	mutex mtx;
@@ -85,16 +107,65 @@ Worker::Worker(const string &dst, const string &dir, MAPF mf, REDUCEF rf)
 	}
 }
 
-void Worker::doMap(int index, const vector<string> &filenames)
+//index:map task num
+//write into mr-x-y x:map task num(index) y:reduce task num
+//one domap map a file to reduce_count intermediate file
+//one index corresponded to one filename
+//domap called count of filename times
+void Worker::doMap(int index, const string &filename)
 {
 	// Lab2: Your code goes here.
+	string content;
+	getline(ifstream(filename), content, '\0');
+    vector <KeyVal> KVA = Map(filename, content);
 
+    //convert KVA to reducer_count strings(list of key val\n )
+	vector <string> outStrings(REDUCER_COUNT,"");
+	for(const KeyVal& keyVal : KVA){
+		std::hash<std::string> hash_string;
+    	int fileIndex = hash_string(keyVal.key)%REDUCER_COUNT;
+		outStrings[fileIndex]+=keyVal.key+" "+keyVal.val+"\n";
+	}
+
+    //write reducer_count strings to files
+	for(int j=0; j<REDUCER_COUNT; j++){
+		string filenameOut=basedir+"mr-"+to_string(index)+"-"+to_string(j);
+		ofstream out(filenameOut, ios::out);
+		out<<outStrings[j];
+		out.close();
+	}
 }
 
-void Worker::doReduce(int index)
+//index=reduce task num
+//mapnum = filenum
+//a doreduce reduce each file's corresponding index map result
+void Worker::doReduce(int index,int mapnum)
 {
 	// Lab2: Your code goes here.
+    
+    // 
+	map<string, unsigned long> kvmap;
+	for(int j=0; j<mapnum; j++){
+		string filename="mr-"+to_string(j)+"-"+to_string(index);
+		ifstream in(filename, ios::in);
+		string key, val;
+		while (in>>key>>val)
+			kvmap[key]+=stol(val);
+		in.close();
+		// cout<<"REDUCE "<<index<<" read "<<filename<<endl;
+	}
 
+
+	
+	string outString="";
+	for(const pair<string,unsigned long>& kv:kvmap)
+		outString+=kv.first+" "+to_string(kv.second)+"\n";
+	
+	string mr_out=basedir+"mr-out-"+to_string(index);
+
+	ofstream out(mr_out,ios::out|ios::app);
+	out<<outString<<endl;
+	out.close();
 }
 
 void Worker::doSubmit(mr_tasktype taskType, int index)
@@ -110,7 +181,6 @@ void Worker::doSubmit(mr_tasktype taskType, int index)
 void Worker::doWork()
 {
 	for (;;) {
-
 		//
 		// Lab2: Your code goes here.
 		// Hints: send asktask RPC call to coordinator
@@ -118,7 +188,25 @@ void Worker::doWork()
 		// if mr_tasktype::REDUCE, then doReduce and doSubmit
 		// if mr_tasktype::NONE, meaning currently no work is needed, then sleep
 		//
+		mr_protocol::AskTaskResponse res;
+        cl->call(mr_protocol::asktask, id, res);
 
+        switch (res.tasktype) {
+            case MAP:
+                cout << "worker: receive map task " << res.index << endl;
+                doMap(res.index, res.filename);
+                doSubmit(MAP, res.index);
+                break;
+            case REDUCE:
+                cout << "worker: receive reduce task" << res.index << endl;
+                doReduce(res.index, res.nfiles);
+                doSubmit(REDUCE, res.index);
+                break;
+            case NONE:
+                cout << "worker: receive no task" << endl;
+                sleep(1);
+                break;
+        }
 	}
 }
 

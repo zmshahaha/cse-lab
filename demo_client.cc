@@ -33,6 +33,7 @@ int
 demo_client::stat(demo_protocol::demoVar var)
 {
   int r;
+  printf("client call%x %u %llu %d\n",demo_protocol::stat, cl->id(), var, r);
   demo_protocol::status ret = cl->call(demo_protocol::stat, cl->id(), var, r);
   VERIFY (ret == demo_protocol::OK);
   return r;
@@ -53,6 +54,6 @@ main(int argc, char *argv[])
 
   dst = argv[1];
   dc = new demo_client(dst);
-  r = dc->stat(1);
+  r = dc->stat(9332);
   printf ("stat returned %d\n", r);
 }

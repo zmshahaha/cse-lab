@@ -17,7 +17,7 @@ struct Task {
 	int taskType;     // should be either Mapper or Reducer
 	bool isAssigned;  // has been assigned to a worker
 	bool isCompleted; // has been finised by a worker
-	int index;        // index to the file
+	int index;        // index to the file or reduce num
 };
 
 class Coordinator {
@@ -25,6 +25,7 @@ public:
 	Coordinator(const vector<string> &files, int nReduce);
 	mr_protocol::status askTask(int, mr_protocol::AskTaskResponse &reply);
 	mr_protocol::status submitTask(int taskType, int index, bool &success);
+	bool assignTask(Task &task);
 	bool isFinishedMap();
 	bool isFinishedReduce();
 	bool Done();
@@ -48,6 +49,22 @@ private:
 
 mr_protocol::status Coordinator::askTask(int, mr_protocol::AskTaskResponse &reply) {
 	// Lab2 : Your code goes here.
+    Task availableTask;
+
+    if (assignTask(availableTask)) 
+	{
+        reply.index = availableTask.index;
+        reply.tasktype = (mr_tasktype) availableTask.taskType;
+        reply.nfiles = files.size();
+		reply.filename = getFile(reply.index);//used only in mapper
+    } 
+	else 
+	{
+        cout << "coordinator: no available tasks " << endl;
+        reply.index = -1;
+        reply.tasktype = NONE;
+        reply.nfiles = 0;
+    }
 
 	return mr_protocol::OK;
 }
@@ -55,7 +72,73 @@ mr_protocol::status Coordinator::askTask(int, mr_protocol::AskTaskResponse &repl
 mr_protocol::status Coordinator::submitTask(int taskType, int index, bool &success) {
 	// Lab2 : Your code goes here.
 
-	return mr_protocol::OK;
+    mtx.lock();
+
+    switch (taskType) {
+        case MAP:
+            cout << "A worker is trying to submit a map task with id: " << index << endl;
+            mapTasks[index].isCompleted = true;
+            this->completedMapCount++;
+            break;
+        case REDUCE:
+            reduceTasks[index].isCompleted = true;
+            this->completedReduceCount++;
+            break;
+        default:
+            break;
+    }
+
+    if (this->completedMapCount >= (long) mapTasks.size() && this->completedReduceCount >= (long) reduceTasks.size()) {
+        this->isFinished = true;
+    }
+
+    mtx.unlock();
+
+    success = true;
+
+    cout << "coordinator: submit succeeded" << endl;
+    return mr_protocol::OK;
+}
+
+bool Coordinator::assignTask(Task &task) {
+    task.taskType = NONE;
+    bool found = false;
+    this->mtx.lock();
+	
+	//if map is not completed ,find unfinished map
+    if (this->completedMapCount < long(this->mapTasks.size())) 
+	{
+        for (int i = 0; i < (int) this->mapTasks.size(); ++i) 
+		{
+            Task &thisTask = this->mapTasks[i];
+            if (!thisTask.isCompleted && !thisTask.isAssigned) 
+			{
+                task = thisTask;
+                thisTask.isAssigned = true;
+                found = true;
+                break;
+            }
+        }
+    } 
+	//else find reduce
+	else 
+	{
+        for (int i = 0; i < (int) this->reduceTasks.size(); ++i) 
+		{
+            Task &thisTask = this->reduceTasks[i];
+            if (!thisTask.isCompleted && !thisTask.isAssigned) 
+			{
+                task = thisTask;
+                thisTask.isAssigned = true;
+                found = true;
+                break;
+            }
+        }
+    }
+
+    this->mtx.unlock();
+
+    return found;
 }
 
 string Coordinator::getFile(int index) {
@@ -149,6 +232,8 @@ int main(int argc, char *argv[])
 	// Lab2: Your code here.
 	// Hints: Register "askTask" and "submitTask" as RPC handlers here
 	// 
+	server.reg(mr_protocol::asktask, &c, &Coordinator::askTask);
+ 	server.reg(mr_protocol::submittask, &c, &Coordinator::submitTask);
 
 	while(!c.Done()) {
 		sleep(1);

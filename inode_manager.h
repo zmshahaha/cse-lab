@@ -12,6 +12,9 @@
 
 typedef uint32_t blockid_t;
 
+class disk;
+class block_manager;
+class inode_manager;
 // disk layer -----------------------------------------
 
 class disk {
@@ -36,9 +39,10 @@ class block_manager {
  private:
   disk *d;
   std::map <uint32_t, int> using_blocks;
+  //bool using_blocks[BLOCK_NUM];
  public:
   block_manager();
-  struct superblock sb;
+  superblock_t sb;
 
   uint32_t alloc_block();
   void free_block(uint32_t id);
@@ -47,20 +51,33 @@ class block_manager {
 };
 
 // inode layer -----------------------------------------
+/*
+ *disk model
+ *   |.........0.........|.........1..........|...............|
+ *   |boot block(ignored)|super block(ignored)|bitmap of block|
+ * 
+ *   |...........|.....|
+ *   |inode table|block|
+ */
 
 #define INODE_NUM  1024
 
-// Inodes per block.
-#define IPB           1
-//(BLOCK_SIZE / sizeof(struct inode))
+// Inodes per block. (in inode table)
+#define IPB           (BLOCK_SIZE / sizeof(struct inode))
+//1
 
-// Block containing inode i
-#define IBLOCK(i, nblocks)     ((nblocks)/BPB + (i)/IPB + 3)
+// Block id containing inode inum i
+#define IBLOCK(i)     ((BLOCK_NUM+BPB-1)/BPB + (i-1)/IPB + 2)
+//2:boot block+super block
+//(BLOCK_NUM+BPB-1)/BPB:bitmap of blocks (rounded up)
+//i/IPB:inode block (rounded down)
 
-// Bitmap bits per block
+#define METABLOCK     IBLOCK(INODE_NUM)//last meta block id
+
+// Bitmap bits per block (=block size by bit)
 #define BPB           (BLOCK_SIZE*8)
 
-// Block containing bit for block b
+// Block containing bit for block b(in bitmap)
 #define BBLOCK(b) ((b)/BPB + 2)
 
 #define NDIRECT 100
@@ -81,7 +98,10 @@ class inode_manager {
   block_manager *bm;
   struct inode* get_inode(uint32_t inum);
   void put_inode(uint32_t inum, struct inode *ino);
-
+  blockid_t findNthBolckNum(inode* inode_, uint32_t nth);
+  void allocNthBolck(inode* inode_, uint32_t nth);
+  void freeNthBolck(inode* inode_, uint32_t nth);
+  
  public:
   inode_manager();
   uint32_t alloc_inode(uint32_t type);
@@ -93,4 +113,3 @@ class inode_manager {
 };
 
 #endif
-
