@@ -17,7 +17,7 @@
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
-#define MAX_ENTRY_SIZE 150
+#define MAX_ENTRY_SIZE 100
 
 template<typename state_machine, typename command>
 class raft {
@@ -595,10 +595,8 @@ void raft<state_machine, command>::run_background_ping() {
     while (true) {
         if (is_stopped()) return;
         // Your code here:
-        std::unique_lock<std::mutex> grd(mtx);
         if(role == leader)
             send_heartbeat();
-        grd.unlock();
         std::this_thread::sleep_for(std::chrono::milliseconds(heartbeat_timeout)); // Change the timeout here!
     }
 }
