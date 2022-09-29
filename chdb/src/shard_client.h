@@ -8,6 +8,7 @@ public:
 
     value_entry(const value_entry &entry) : value(entry.value) {}
 
+    value_entry(int v) : value(v) {}
     int value;
 };
 
@@ -48,16 +49,16 @@ public:
 
     int get(chdb_protocol::operation_var var, int &r);
 
-    int prepare(chdb_protocol::prepare_var var, int &r);
+    int prepare(chdb_protocol::operation_var var, int &r);
 
-    int commit(chdb_protocol::commit_var var, int &r);
+    int commit(chdb_protocol::operation_var var, int &r);
 
     /**
      * Execute rollback according to `undo_logs`
      * */
-    int rollback(chdb_protocol::rollback_var var, int &r);
+    int rollback(chdb_protocol::operation_var var, int &r);
 
-    int check_prepare_state(chdb_protocol::check_prepare_state_var var, int &r);
+    int check_prepare_state(chdb_protocol::operation_var var, int &r);
 
     void set_active(bool active) {
         this->active = active;
@@ -87,5 +88,5 @@ public:
     std::vector<std::map<int, value_entry>> store;
     int primary_replica = 0;
     int replica_num = 5;
-
+    std::map<int, std::vector<std::pair<int, int>>> log;
 };

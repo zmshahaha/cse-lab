@@ -68,4 +68,6 @@ private:
 
     chdb *db;
     const int tx_id;
+    std::vector<int> query_keys_write;
+    std::vector<int> query_keys_read;
 };
