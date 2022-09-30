@@ -36,7 +36,7 @@ public:
 
 
     virtual int size() const override {
-        return sizeof(*this);
+        return sizeof(command_type)+3*sizeof(int);
     }
 
     virtual void serialize(char *buf, int size) const override;
@@ -65,4 +65,6 @@ public:
     // Apply the snapshot to the state mahine.
     // In Chdb, you don't need to implement this function
     virtual void apply_snapshot(const std::vector<char> &) {}
+private:
+    std::map<int, int> kv_table;  
 };
