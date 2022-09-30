@@ -66,6 +66,9 @@ private:
      * */
     int tx_abort();
 
+    void acquire_lock(int key);
+    void release_lock();
+    
     chdb *db;
     const int tx_id;
     std::vector<int> query_keys_write;

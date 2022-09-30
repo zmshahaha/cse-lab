@@ -9,13 +9,18 @@ using shard_dispatch = int (*)(int key, int shard_num);
 using chdb_raft = raft<chdb_state_machine, chdb_command>;
 using chdb_raft_group = raft_group<chdb_state_machine, chdb_command>;
 
+struct lock_tx {
+    std::mutex lock;
+    int tx_id = -1;
+};
+
 /**
  * Master node
  * */
 class view_server {
 public:
-    rpc_node *node;
     shard_dispatch dispatch;            /* Dispatch requests to the target shard */
+    rpc_node *node;
     chdb_raft_group *raft_group;
 
     view_server(const int base_port,
@@ -112,6 +117,27 @@ public:
         }
     }
 
+    bool acquire_lock(int key, int tx_id) {
+        lock_map_lock.lock();
+        lock_tx &lock_item = lock_map[key];
+        bool success = lock_item.tx_id < tx_id;
+        lock_map_lock.unlock();
+        if (success) {
+            lock_item.lock.lock();
+            lock_item.tx_id = tx_id;
+        } else
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        return success;
+    }
+
+    void release_lock(int key, int tx_id) {
+        lock_map_lock.lock();
+        lock_tx &lock_item = lock_map[key];
+        lock_item.lock.unlock();
+        lock_item.tx_id = -1;
+        lock_map_lock.unlock();
+    }
     /**
      * Generate one unique transaction id
      * */
@@ -125,11 +151,12 @@ public:
         return res;
     }
 
-    view_server *vserver;
-
-    std::vector<shard_client *> shards;
     int max_tx_id;
+    view_server *vserver;
+    std::vector<shard_client *> shards;
     std::mutex tx_id_mtx;
+    std::map<int, lock_tx> lock_map;
+    std::mutex lock_map_lock;
 
 private:
     static int default_dispatch(const int key, int shard_num) {

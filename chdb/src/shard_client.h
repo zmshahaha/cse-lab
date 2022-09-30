@@ -80,11 +80,11 @@ public:
     std::map<int, value_entry> &get_store() {
         return this->store[primary_replica];
     }
-
-    int shard_id;
-    int view_server_port;
+    
     bool active;
+    int shard_id;
     rpc_node *node;
+    int view_server_port;
     std::vector<std::map<int, value_entry>> store;
     int primary_replica = 0;
     int replica_num = 5;

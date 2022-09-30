@@ -49,7 +49,7 @@ TEST_CASE(part1, simple_tx_abort, "Simple transaction of abort") {
 }
 
 TEST_CASE(part1, random_tx_abort, "Random choose shard to abort") {
-    int write_val = 1024, r = 0, shard_num = 64;
+    int write_val = 1024, shard_num = 64;
     chdb store(shard_num, CHDB_PORT);
     std::set<int> deactive_shards;
 

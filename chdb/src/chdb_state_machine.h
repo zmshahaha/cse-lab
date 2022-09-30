@@ -29,9 +29,8 @@ public:
 
     virtual ~chdb_command() {}
 
-
-    int key, value, tx_id;
     command_type cmd_tp;
+    int key, value, tx_id;
     std::shared_ptr<result> res;
 
 
